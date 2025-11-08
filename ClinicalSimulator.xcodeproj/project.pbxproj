@@ -29,7 +29,6 @@
 		93DC8ABE2EBD173400CC9E7A /* Mantis in Frameworks */ = {isa = PBXBuildFile; productRef = 93DC8ABD2EBD173400CC9E7A /* Mantis */; };
 		93E93B332EBD269700FD5B1B /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B322EBD267800FD5B1B /* UserProfile.swift */; };
 		93E93B3B2EBD2FB000FD5B1B /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */; };
-		93E93B402EBF52FC00FD5B1B /* Secrets.xcconfig in Resources */ = {isa = PBXBuildFile; fileRef = 93E93B3F2EBF52FC00FD5B1B /* Secrets.xcconfig */; };
 		93F959AF2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */; };
 		93F959B12E69967C00ABFEC2 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959B02E69967C00ABFEC2 /* DashboardView.swift */; };
 		93F959B52E69967D00ABFEC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93F959B42E69967D00ABFEC2 /* Assets.xcassets */; };
@@ -78,7 +77,6 @@
 		93B313512E6ED40A007FD59A /* DebriefView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebriefView.swift; sourceTree = "<group>"; };
 		93E93B322EBD267800FD5B1B /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
 		93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAvatarView.swift; sourceTree = "<group>"; };
-		93E93B3F2EBF52FC00FD5B1B /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 		93F959AB2E69967C00ABFEC2 /* ClinicalSimulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClinicalSimulator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClinicalSimulatorApp.swift; sourceTree = "<group>"; };
 		93F959B02E69967C00ABFEC2 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -153,7 +151,6 @@
 		93F959A22E69967C00ABFEC2 = {
 			isa = PBXGroup;
 			children = (
-				93E93B3F2EBF52FC00FD5B1B /* Secrets.xcconfig */,
 				93E93B352EBD26AF00FD5B1B /* Utils */,
 				93B3133A2E6B061A007FD59A /* Shared */,
 				93F959CE2E699B8900ABFEC2 /* Views */,
@@ -332,7 +329,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				93E93B402EBF52FC00FD5B1B /* Secrets.xcconfig in Resources */,
 				93F959D82E699F6900ABFEC2 /* SampleCases.json in Resources */,
 				93F959B52E69967D00ABFEC2 /* Assets.xcassets in Resources */,
 				93F959C72E6998E200ABFEC2 /* GoogleService-Info.plist in Resources */,
