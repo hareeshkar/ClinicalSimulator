@@ -3,6 +3,9 @@ import SwiftUI
 struct ProfileAvatarView: View {
     @State private var profileImage: UIImage?
     
+    // ✅ Get the current user from the environment
+    @Environment(User.self) private var currentUser
+    
     var body: some View {
         Group {
             if let image = profileImage {
@@ -10,8 +13,9 @@ struct ProfileAvatarView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: "person.crop.circle.fill")
-                    .font(.title2)
+                // ✅ Show the first initial of the full name as a fallback
+                Text(currentUser.fullName.prefix(1))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
         }
@@ -22,12 +26,23 @@ struct ProfileAvatarView: View {
         }
     }
     
+    // ✅ --- REWORKED loadProfileImage ---
     private func loadProfileImage() {
+        // 1. Check if the user has a filename
+        guard let filename = currentUser.profileImageFilename, !filename.isEmpty else {
+            self.profileImage = nil
+            return
+        }
+        
+        // 2. Construct the URL from the filename
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("profileImage.jpg")
+            .appendingPathComponent(filename)
             
+        // 3. Load the image
         if let data = try? Data(contentsOf: url) {
             self.profileImage = UIImage(data: data)
+        } else {
+            self.profileImage = nil
         }
     }
 }

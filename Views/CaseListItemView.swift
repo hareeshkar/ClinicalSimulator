@@ -269,9 +269,12 @@ struct DifficultyTagView: View {
                 fullCaseJSON: "{}"
             )
             
-            let mockSessionContinue = StudentSession(caseId: "PREVIEW-03")
+            // ✅ FIX: Create a mock user just for the preview.
+            let mockUser = User(fullName: "Preview User", email: "preview@example.com", password: "password")
+
+            let mockSessionContinue = StudentSession(caseId: "PREVIEW-03", user: mockUser) // ✅ PASS USER
             let mockSessionReview: StudentSession = {
-                let session = StudentSession(caseId: "PREVIEW-01")
+                let session = StudentSession(caseId: "PREVIEW-01", user: mockUser) // ✅ PASS USER
                 session.score = 68
                 return session
             }()

@@ -9,8 +9,10 @@ struct DashboardView: View {
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var navigationManager: NavigationManager
     
+    // ✅ ADD ENVIRONMENT FOR CURRENT USER
+    @Environment(User.self) private var currentUser
+    
     // Add this property to DashboardView
-    @AppStorage("userName") private var userName: String = "User"
     @AppStorage("userRoleTitle") private var userRoleTitle: String = UserProfileRole.studentMS3.title
     
     // Data Queries
@@ -19,6 +21,13 @@ struct DashboardView: View {
     private var inProgressSessions: [StudentSession]
     @Query(filter: #Predicate<StudentSession> { $0.isCompleted }, sort: \.sessionId, order: .reverse)
     private var completedSessions: [StudentSession]
+    
+    // ✅ ADD THE INITIALIZER
+    init() {
+        // This is a temporary workaround because @Environment is not available
+        // during property initialization. We will filter the results in computed properties.
+        // A more advanced approach would involve passing the user ID in.
+    }
     
     // Local UI State
     @State private var selectedCaseForBriefing: PatientCase?
@@ -54,6 +63,15 @@ struct DashboardView: View {
     
     private var recentlyCompletedSessions: [StudentSession] {
         Array(completedSessions.prefix(3))
+    }
+    
+    // ✅ UPDATE COMPUTED PROPERTIES TO FILTER BY USER
+    private var userInProgressSessions: [StudentSession] {
+        inProgressSessions.filter { $0.user?.id == currentUser.id }
+    }
+    
+    private var userCompletedSessions: [StudentSession] {
+        completedSessions.filter { $0.user?.id == currentUser.id }
     }
     
     // Computed property for dynamic greeting based on current time
@@ -145,8 +163,12 @@ struct DashboardView: View {
         }
         .sheet(item: $selectedCaseForBriefing) { patientCase in
             CaseBriefingView(patientCase: patientCase) {
-                let session = DataManager.findOrCreateActiveSession(for: patientCase.caseId, modelContext: modelContext)
-                // ✅ Pass the actual user role
+                // ✅ FIX: Pass the currentUser to the DataManager call.
+                let session = DataManager.findOrCreateActiveSession(
+                    for: patientCase.caseId,
+                    user: currentUser, // <-- THE FIX
+                    modelContext: modelContext
+                )
                 let viewModel = ChatViewModel(
                     patientCase: patientCase, 
                     session: session, 
@@ -183,7 +205,8 @@ struct DashboardView: View {
                         .font(.title3)
                         .foregroundStyle(.secondary)
                     
-                    Text(userName) // Use the dynamic user name
+                    // ✅ Display the user's full name
+                    Text(currentUser.fullName)
                         .font(.largeTitle.bold())
                         .foregroundStyle(.primary)
                 }
@@ -219,7 +242,7 @@ struct DashboardView: View {
             HStack(spacing: 16) {
                 DashboardStatCard(
                     title: "Cases Completed",
-                    value: completedSessions.count,
+                    value: userCompletedSessions.count, // ✅ UPDATED
                     format: .wholeNumber,
                     iconName: "checkmark.circle.fill",
                     color: SpecialtyDetailsProvider.color(for: "Internal Medicine"),
@@ -232,7 +255,7 @@ struct DashboardView: View {
                     format: .percentage,
                     iconName: "star.circle.fill",
                     color: SpecialtyDetailsProvider.color(for: "Emergency Medicine"),
-                    trend: completedSessions.count > 1 ? .improving : .stable
+                    trend: userCompletedSessions.count > 1 ? .improving : .stable // ✅ UPDATED
                 )
             }
             .padding(.horizontal)
@@ -241,16 +264,16 @@ struct DashboardView: View {
 
     @ViewBuilder
     private var continueSection: some View {
-        if !inProgressSessions.isEmpty {
+        if !userInProgressSessions.isEmpty { // ✅ UPDATED
             VStack(alignment: .leading, spacing: 8) {
                 HStack {
                     Label("Active Simulations", systemImage: "play.circle.fill")
-                        .font(.title2.bold())
+                        .font(.title2.bold()) // Bolder title
                         .foregroundStyle(.primary)
 
                     Spacer()
 
-                    Text("\(inProgressSessions.count)")
+                    Text("\(userInProgressSessions.count)") // ✅ UPDATED
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 8)
@@ -261,7 +284,7 @@ struct DashboardView: View {
 
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 16) {
-                        ForEach(inProgressSessions) { session in
+                        ForEach(userInProgressSessions) { session in // ✅ UPDATED
                             if let patientCase = allCases.first(where: { $0.caseId == session.caseId }) {
                                 Button(action: {
                                     // ✅ Pass userRole here

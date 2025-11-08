@@ -47,33 +47,40 @@ class DataManager {
     }
     // ADD THIS FUNCTION to DataManager.swift
 
-    static func findOrCreateActiveSession(for caseId: String, modelContext: ModelContext) -> StudentSession {
-        // 1. Create a "fetch request" to find an existing session.
-        let predicate = #Predicate<StudentSession> { $0.caseId == caseId && $0.isCompleted == false }
+    static func findOrCreateActiveSession(for caseId: String, user: User, modelContext: ModelContext) -> StudentSession {
+        // 1. Update the predicate to also filter by the user.
+        let userId = user.id // SwiftData needs the ID for the predicate
+        let predicate = #Predicate<StudentSession> { 
+            $0.caseId == caseId && 
+            $0.isCompleted == false &&
+            $0.user?.id == userId // <-- THE CRUCIAL ADDITION
+        }
         let descriptor = FetchDescriptor(predicate: predicate)
         
         do {
-            // 2. Try to fetch the session from the database.
             if let existingSession = try modelContext.fetch(descriptor).first {
-                print("Found existing session for case: \(caseId)")
+                print("Found existing session for case: \(caseId) for user: \(user.fullName)")
                 return existingSession
             }
         } catch {
-            // This should ideally be handled more gracefully.
             fatalError("Failed to fetch sessions: \(error)")
         }
         
-        // 3. If no session was found, create a new one.
-        print("No active session found. Creating a new one for case: \(caseId)")
-        let newSession = StudentSession(caseId: caseId)
-        modelContext.insert(newSession) // Add it to the database.
+        print("No active session found. Creating a new one for case: \(caseId) for user: \(user.fullName)")
+        // 3. Pass the user to the new session's initializer.
+        let newSession = StudentSession(caseId: caseId, user: user)
+        modelContext.insert(newSession)
         return newSession
     }
-    // NEW FUNCTION: This only finds, it does not create.
-    static func findActiveSession(for caseId: String, modelContext: ModelContext) -> StudentSession? {
-        let predicate = #Predicate<StudentSession> { $0.caseId == caseId && $0.isCompleted == false }
+    // ✅ FIX: Update this function to also require a user.
+    static func findActiveSession(for caseId: String, user: User, modelContext: ModelContext) -> StudentSession? {
+        let userId = user.id
+        let predicate = #Predicate<StudentSession> {
+            $0.caseId == caseId &&
+            $0.isCompleted == false &&
+            $0.user?.id == userId // <-- THE FIX
+        }
         let descriptor = FetchDescriptor(predicate: predicate)
-        // Try to fetch the session and return the first one found, or nil if the array is empty.
         return try? modelContext.fetch(descriptor).first
     }
 }

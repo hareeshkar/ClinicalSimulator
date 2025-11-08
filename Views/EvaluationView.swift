@@ -291,12 +291,14 @@ struct FeedbackListView: View {
 
 #Preview("Tabbed Report") {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: StudentSession.self, PatientCase.self, configurations: config)
-    let mockSession = StudentSession(caseId: "mock")
+    let container = try! ModelContainer(for: StudentSession.self, PatientCase.self, User.self, configurations: config)
+    
+    let mockUser = User(fullName: "Preview User", email: "preview@example.com", password: "password")
+    container.mainContext.insert(mockUser)
+    
+    let mockSession = StudentSession(caseId: "mock", user: mockUser)
     let mockCase = PatientCase(caseId: "mock", title: "Mock Case", specialty: "Mock Specialty", difficulty: "Advanced", chiefComplaint: "Mock complaint", fullCaseJSON: "{}")
     
-    // IMPORTANT: To make the preview work, we have to pre-populate the evaluationJSON
-    // on the mock session so the view has data to display immediately.
     if let data = try? JSONEncoder().encode(ProfessionalEvaluationResult.mock) {
         mockSession.evaluationJSON = String(data: data, encoding: .utf8)
     }
@@ -304,14 +306,20 @@ struct FeedbackListView: View {
     let context = EvaluationNavigationContext(patientCase: mockCase, session: mockSession)
     
     return UnifiedReportView(context: context, modelContext: container.mainContext, onDismiss: {})
+        .environment(mockUser)
 }
 
 #Preview("Post-Simulation Flow") {
     let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: StudentSession.self, PatientCase.self, configurations: config)
-    let mockSession = StudentSession(caseId: "mock")
+    let container = try! ModelContainer(for: StudentSession.self, PatientCase.self, User.self, configurations: config)
+
+    let mockUser = User(fullName: "Preview User", email: "preview@example.com", password: "password")
+    container.mainContext.insert(mockUser)
+
+    let mockSession = StudentSession(caseId: "mock", user: mockUser)
     let mockCase = PatientCase(caseId: "mock", title: "Mock", specialty: "Mock", difficulty: "Advanced", chiefComplaint: "Mock", fullCaseJSON: "{}")
     let context = EvaluationNavigationContext(patientCase: mockCase, session: mockSession)
     
     return EvaluationView(context: context, modelContext: container.mainContext, onFinish: {})
+        .environment(mockUser)
 }

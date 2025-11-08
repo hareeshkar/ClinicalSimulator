@@ -1,27 +1,41 @@
 import SwiftUI
 import SwiftData
-import FirebaseCore // 1. Import the FirebaseCore library
+import FirebaseCore
+
+// ✅ ADD A CUSTOM APP DELEGATE
+class AppDelegate: NSObject, UIApplicationDelegate {
+    let modelContainer: ModelContainer
+    
+    override init() {
+        do {
+            // Initialize the container here so we can access it.
+            modelContainer = try ModelContainer(for: PatientCase.self, StudentSession.self, ConversationMessage.self, User.self)
+        } catch {
+            fatalError("Failed to initialize ModelContainer: \(error)")
+        }
+    }
+}
 
 @main
 struct ClinicalSimulatorApp: App {
+    // ✅ REGISTER THE APP DELEGATE
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    // 2. Add this init() method
-    // This code runs once when your app starts up.
     init() {
-        // This line finds your GoogleService-Info.plist and configures Firebase.
         FirebaseApp.configure()
-        print("Firebase configured successfully!") // Optional: for debugging
+        print("Firebase configured successfully!")
     }
 
     var body: some Scene {
         WindowGroup {
-            MainTabView()
+            // ✅ FIX: Pass the modelContainer directly to ContentView's initializer.
+            ContentView(modelContainer: appDelegate.modelContainer)
                 .onTapGesture {
                     hideKeyboard()
                 }
         }
-        // We will replace 'Item.self' with our real models later.
-        .modelContainer(for: [PatientCase.self, StudentSession.self, ConversationMessage.self])
+        // ✅ USE THE CONTAINER FROM THE DELEGATE
+        .modelContainer(appDelegate.modelContainer)
     }
     
     private func hideKeyboard() {

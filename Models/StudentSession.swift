@@ -26,6 +26,10 @@ class StudentSession {
     var isCompleted: Bool
     var score: Double?
 
+    // ✅ ADD THIS RELATIONSHIP
+    // This is the "many-to-one" side: many sessions can belong to one user.
+    var user: User?
+
     // ⚠️ REMOVE THE OLD, DEPRECATED DATA PROPERTY. THIS IS THE CAUSE OF THE ERROR.
     // private var orderedTestNamesData: Data = Data()
     
@@ -61,9 +65,11 @@ class StudentSession {
 
     var evaluationJSON: String?
 
-    init(sessionId: UUID = UUID(), caseId: String, isCompleted: Bool = false) {
+    // ✅ UPDATE THE INITIALIZER
+    init(sessionId: UUID = UUID(), caseId: String, isCompleted: Bool = false, user: User) {
         self.sessionId = sessionId
         self.caseId = caseId
         self.isCompleted = isCompleted
+        self.user = user // Assign the user
     }
 }

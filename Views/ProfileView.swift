@@ -4,7 +4,7 @@ import PhotosUI
 
 struct ProfileView: View {
     // MARK: - User Preferences (Persisted)
-    @AppStorage("userName") private var userName: String = "User"
+    // ✅ Keep these as they are device-specific settings, not user-specific data
     @AppStorage("userRoleTitle") private var userRoleTitle: String = UserProfileRole.studentMS3.title
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
     @AppStorage("preferredColorScheme") private var preferredColorScheme: String = "system"
@@ -12,11 +12,13 @@ struct ProfileView: View {
     // MARK: - Local State
     @State private var isShowingResetConfirmation = false
     @State private var isShowingReloadConfirmation = false
+    @State private var isShowingLogoutConfirmation = false // ✅ NEW: Logout confirmation
+    @State private var editableUserName: String = "" // Temporary state for the TextField
     
-    // MARK: - Image Picking & Role Editing State (MOVED HERE)
+    // MARK: - Image Picking & Role Editing State
     @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var tempImageForCropping: UIImage? // ✅ NEW: Temporary holder for uncropped image
-    @State private var selectedImage: UIImage? // ✅ CHANGED: Now only holds the FINAL cropped image
+    @State private var tempImageForCropping: UIImage?
+    @State private var selectedImage: UIImage?
     @State private var profileImage: UIImage?
     @State private var isShowingCropper = false
     @State private var isEditingCustomRole = false
@@ -24,12 +26,15 @@ struct ProfileView: View {
     
     // MARK: - Environment
     @Environment(\.modelContext) private var modelContext
+    @Environment(User.self) private var currentUser // The read-only source of truth
+    @EnvironmentObject var authService: AuthService // For logout
     
     var body: some View {
         NavigationStack {
             List {
+                // ✅ FIX: Pass a binding to our new 'editableUserName' state variable
                 ProfileHeaderView(
-                    userName: $userName,
+                    userName: $editableUserName, // <-- THE FIX
                     userRoleTitle: $userRoleTitle,
                     selectedPhotoItem: $selectedPhotoItem,
                     profileImage: $profileImage,
@@ -42,24 +47,31 @@ struct ProfileView: View {
                 preferencesSection
                 dataManagementSection
                 aboutSection
-                
-                Section {
-                    Button("Log Out") { /* Implement Log Out */ }
-                        .foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                }
+                logoutSection
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Settings")
+            // ✅ EXISTING ALERTS
             .alert("Reset All Progress?", isPresented: $isShowingResetConfirmation) {
+                Button("Cancel", role: .cancel) { }
                 Button("Reset Progress", role: .destructive, action: resetAllProgress)
             } message: {
                 Text("This will delete all simulation history. This action cannot be undone.")
             }
             .alert("Reload Sample Cases?", isPresented: $isShowingReloadConfirmation) {
+                Button("Cancel", role: .cancel) { }
                 Button("Reload Cases", role: .destructive, action: reloadSampleCases)
             } message: {
                 Text("This will delete all existing cases and replace them with the original sample set. Any custom cases will be lost.")
+            }
+            // ✅ NEW: Logout confirmation alert
+            .alert("Log Out?", isPresented: $isShowingLogoutConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Log Out", role: .destructive) {
+                    performLogout()
+                }
+            } message: {
+                Text("Are you sure you want to log out? Any unsaved changes will be lost.")
             }
             // ✅ STATE MANAGEMENT MODIFIERS MOVED HERE
             .onChange(of: selectedPhotoItem, handlePhotoSelection)
@@ -73,7 +85,8 @@ struct ProfileView: View {
                 })
             }
             .onChange(of: selectedImage, saveProfileImage)
-            .onAppear(perform: loadProfileImage)
+            .onAppear(perform: setupView) // ✅ Use a dedicated setup function
+            .onDisappear(perform: saveChanges) // ✅ Save changes when the view disappears
         }
     }
     
@@ -123,7 +136,57 @@ struct ProfileView: View {
         }
     }
     
-    // MARK: - Logic & Handlers (MOVED HERE)
+    // ✅ NEW: Separate logout section for better UX
+    @ViewBuilder
+    private var logoutSection: some View {
+        Section {
+            Button(action: { isShowingLogoutConfirmation = true }) {
+                HStack {
+                    Spacer()
+                    Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
+                        .font(.headline)
+                        .foregroundStyle(.red)
+                    Spacer()
+                }
+            }
+        }
+    }
+    
+    // MARK: - Logic & Handlers
+    
+    // ✅ A function to set up the view's initial state
+    private func setupView() {
+        // When the view appears, copy the current user's name to our editable state
+        editableUserName = currentUser.fullName
+        loadProfileImage()
+    }
+    
+    // ✅ A function to save any changes back to the model
+    private func saveChanges() {
+        // Only save if the name has actually changed
+        guard !editableUserName.isEmpty else { return }
+        if editableUserName == currentUser.fullName { return }
+
+        // Instead of assigning to `currentUser` (environment value is read-only),
+        // fetch the mutable User instance from the modelContext and update it.
+        let userId = currentUser.id
+        let predicate = #Predicate<User> { $0.id == userId }
+        let descriptor = FetchDescriptor<User>(predicate: predicate)
+        if let user = try? modelContext.fetch(descriptor).first {
+            user.fullName = editableUserName
+            try? modelContext.save()
+        } else {
+            // Fallback: as a defensive measure, attempt to mutate the environment user if possible.
+            // (Most likely not reached in normal operation.)
+            print("Warning: Could not locate user in modelContext to save profile changes.")
+        }
+    }
+    
+    // ✅ NEW: Proper logout function
+    private func performLogout() {
+        authService.logout()
+        // The ContentView will automatically switch to LoginView when currentUser becomes nil
+    }
     
     private func handlePhotoSelection() {
         Task {
@@ -135,21 +198,65 @@ struct ProfileView: View {
         }
     }
     
+    // ✅ --- COMPLETE OVERHAUL OF saveProfileImage ---
     private func saveProfileImage() {
+        // 1. Ensure we have a cropped image to save.
         guard let image = selectedImage else { return }
-        self.profileImage = image
-        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("profileImage.jpg")
-        try? data.write(to: url)
         
-        // ✅ ADD THIS LINE to notify other views of the change
-        NotificationCenter.default.post(name: .profileImageDidChange, object: nil)
+        // 2. Update the UI immediately for a responsive feel.
+        self.profileImage = image
+        
+        // 3. Create a unique, user-specific filename using the user's UUID.
+        // This is more robust than using username as it will never change.
+        let filename = "\(currentUser.id).jpg"
+        
+        // 4. Get the full path to the file in the documents directory.
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(filename)
+            
+        // 5. Convert the image to JPEG data.
+        guard let data = image.jpegData(compressionQuality: 0.8) else {
+            print("Error: Could not convert image to JPEG data.")
+            return
+        }
+        
+        do {
+            // 6. Write the data to the unique file path.
+            try data.write(to: url)
+            print("Successfully saved image to \(url.path)")
+            
+            // 7. CRITICAL: Save the unique filename to the User model.
+            currentUser.profileImageFilename = filename
+            try? modelContext.save() // Persist the change
+            
+            // 8. Notify other parts of the app (like the dashboard avatar) about the change.
+            NotificationCenter.default.post(name: .profileImageDidChange, object: nil)
+            
+        } catch {
+            print("Error saving image: \(error.localizedDescription)")
+        }
     }
     
+    // ✅ --- COMPLETE OVERHAUL OF loadProfileImage ---
     private func loadProfileImage() {
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("profileImage.jpg")
+        // 1. Check if the current user has a saved image filename.
+        guard let filename = currentUser.profileImageFilename, !filename.isEmpty else {
+            // If not, ensure the UI shows the placeholder.
+            self.profileImage = nil
+            return
+        }
+        
+        // 2. Construct the full URL from the unique filename.
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent(filename)
+            
+        // 3. Try to load the data and create the image.
         if let data = try? Data(contentsOf: url) {
             self.profileImage = UIImage(data: data)
+        } else {
+            // If the file is missing for some reason, clear the image.
+            self.profileImage = nil
+            print("Warning: Could not load image data from path: \(url.path)")
         }
     }
     
@@ -163,15 +270,19 @@ struct ProfileView: View {
     }
 }
 
-// MARK: - Reusable ProfileHeaderView (Simplified)
+// MARK: - Reusable ProfileHeaderView (No changes needed here now)
+// The ProfileHeaderView is already correctly defined to accept a Binding<String> for userName.
+// The error was in the parent view (ProfileView) not providing that binding.
 struct ProfileHeaderView: View {
-    // Bindings to state owned by the parent view
     @Binding var userName: String
     @Binding var userRoleTitle: String
     @Binding var selectedPhotoItem: PhotosPickerItem?
     @Binding var profileImage: UIImage?
     @Binding var isEditingCustomRole: Bool
     @Binding var customRoleText: String
+    
+    // ✅ NEW: Add environment to access current user for fallback
+    @Environment(User.self) private var currentUser
 
     var body: some View {
         VStack(spacing: 16) {
@@ -180,7 +291,10 @@ struct ProfileHeaderView: View {
                     if let image = profileImage {
                         Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
                     } else {
-                        Image(systemName: "person.fill").font(.system(size: 50)).foregroundStyle(.secondary)
+                        // ✅ Show the first initial of the full name as a fallback
+                        Text(currentUser.fullName.prefix(1))
+                            .font(.system(size: 50, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(width: 100, height: 100)
@@ -196,6 +310,8 @@ struct ProfileHeaderView: View {
             }
             .buttonStyle(.plain)
             
+            // ✅ This TextField now correctly binds to the 'editableUserName'
+            // state variable from the parent ProfileView.
             TextField("Your Name", text: $userName)
                 .font(.largeTitle.bold())
                 .multilineTextAlignment(.center)
@@ -277,6 +393,18 @@ struct SettingRowView<Content: View>: View {
 
 // MARK: - Preview
 #Preview {
-    ProfileView()
-        .modelContainer(for: [PatientCase.self, StudentSession.self], inMemory: true)
+    // ✅ FIX: The preview needs a mock user and auth service to work correctly.
+    let config = ModelConfiguration(isStoredInMemoryOnly: true)
+    let container = try! ModelContainer(for: PatientCase.self, StudentSession.self, User.self, configurations: config)
+    
+    let mockUser = User(fullName: "Dr. SwiftUI", email: "dr.swiftui@example.com", password: "password")
+    container.mainContext.insert(mockUser)
+    
+    let authService = AuthService(modelContext: container.mainContext)
+    // NOTE: authService.currentUser is private(set) — do not assign here in preview.
+
+    return ProfileView()
+        .modelContainer(container) // Provide the container
+        .environment(mockUser) // Provide the user
+        .environmentObject(authService) // Provide the auth service
 }

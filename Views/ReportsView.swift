@@ -15,9 +15,16 @@ struct ReportsView: View {
 
     // ✅ ADDED ENVIRONMENT OBJECT
     @EnvironmentObject private var navigationManager: NavigationManager
+    // ✅ ADD ENVIRONMENT USER
+    @Environment(User.self) private var currentUser
+
+    private var userCompletedSessions: [StudentSession] { // ✅ CREATE FILTERED PROPERTY
+        completedSessions.filter { $0.user?.id == currentUser.id }
+    }
 
     private var completedCases: [PatientCase] {
-        let ids = Set(completedSessions.map { $0.caseId })
+        // ✅ USE THE FILTERED SESSIONS
+        let ids = Set(userCompletedSessions.map { $0.caseId })
         return allCases
             .filter { ids.contains($0.caseId) }
             .sorted { $0.title < $1.title }
@@ -65,7 +72,8 @@ struct ReportsView: View {
     }
 
     private func mostRecentSession(for caseId: String) -> StudentSession? {
-        completedSessions.first { $0.caseId == caseId }
+        // ✅ USE THE FILTERED SESSIONS
+        userCompletedSessions.first { $0.caseId == caseId }
     }
 }
 
@@ -77,7 +85,9 @@ struct CaseHistoryView: View {
     @Query private var sessions: [StudentSession]
     @Environment(\.modelContext) private var modelContext
     @EnvironmentObject private var navigationManager: NavigationManager // ✅ ADDED
-    
+    // ✅ ADD ENVIRONMENT USER
+    @Environment(User.self) private var currentUser
+
     @State private var selectedSessionForReport: StudentSession?
 
     init(patientCase: PatientCase) {
@@ -93,15 +103,20 @@ struct CaseHistoryView: View {
         )
     }
 
-    // ✅ NEW: Computed property for average score across sessions
+    // ✅ ADD A FILTERED COMPUTED PROPERTY
+    private var userSessions: [StudentSession] {
+        sessions.filter { $0.user?.id == currentUser.id }
+    }
+
+    // ✅ UPDATE OTHER COMPUTED PROPERTIES TO USE THE FILTERED LIST
     private var averageScore: Double {
-        let scores = sessions.compactMap { $0.score }
+        let scores = userSessions.compactMap { $0.score }
         return scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
     }
     
     // ✅ NEW: Best score for display
     private var bestScore: Double {
-        sessions.compactMap { $0.score }.max() ?? 0
+        userSessions.compactMap { $0.score }.max() ?? 0
     }
     
     var body: some View {
@@ -113,7 +128,7 @@ struct CaseHistoryView: View {
                     caseHeader
                         .animation(.spring(response: 0.5, dampingFraction: 0.7), value: sessions.count) // ✅ ADDED: Animation for header
                     
-                    ForEach(sessions) { session in
+                    ForEach(userSessions) { session in // ✅ USE THE FILTERED LIST
                         // ✅ RESTORED: Wrap row in a Button so tapping opens the report sheet directly
                         Button(action: {
                             selectedSessionForReport = session
@@ -209,14 +224,14 @@ struct CaseHistoryView: View {
             
             Divider()
             
-            if sessions.count == 0 {
+            if userSessions.count == 0 { // ✅ USE FILTERED COUNT
                 Text("No attempts yet.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("You have \(sessions.count) completed attempt\(sessions.count == 1 ? "" : "s") for this case.")
+                    Text("You have \(userSessions.count) completed attempt\(userSessions.count == 1 ? "" : "s") for this case.") // ✅ USE FILTERED COUNT
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }

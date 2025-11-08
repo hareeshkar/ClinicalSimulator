@@ -29,6 +29,8 @@
 		93DC8ABE2EBD173400CC9E7A /* Mantis in Frameworks */ = {isa = PBXBuildFile; productRef = 93DC8ABD2EBD173400CC9E7A /* Mantis */; };
 		93E93B332EBD269700FD5B1B /* UserProfile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B322EBD267800FD5B1B /* UserProfile.swift */; };
 		93E93B3B2EBD2FB000FD5B1B /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */; };
+		93E93B422EBF62DB00FD5B1B /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B412EBF62D900FD5B1B /* User.swift */; };
+		93E93B4F2EBF636200FD5B1B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B4E2EBF636000FD5B1B /* ContentView.swift */; };
 		93F959AF2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */; };
 		93F959B12E69967C00ABFEC2 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959B02E69967C00ABFEC2 /* DashboardView.swift */; };
 		93F959B52E69967D00ABFEC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93F959B42E69967D00ABFEC2 /* Assets.xcassets */; };
@@ -77,6 +79,8 @@
 		93B313512E6ED40A007FD59A /* DebriefView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DebriefView.swift; sourceTree = "<group>"; };
 		93E93B322EBD267800FD5B1B /* UserProfile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserProfile.swift; sourceTree = "<group>"; };
 		93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAvatarView.swift; sourceTree = "<group>"; };
+		93E93B412EBF62D900FD5B1B /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
+		93E93B4E2EBF636000FD5B1B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		93F959AB2E69967C00ABFEC2 /* ClinicalSimulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClinicalSimulator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClinicalSimulatorApp.swift; sourceTree = "<group>"; };
 		93F959B02E69967C00ABFEC2 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -117,6 +121,16 @@
 				93E93B382EBD282A00FD5B1B /* Exceptions for "Utils" folder in "ClinicalSimulator" target */,
 			);
 			path = Utils;
+			sourceTree = "<group>";
+		};
+		93E93B432EBF630B00FD5B1B /* Auth */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Auth;
+			sourceTree = "<group>";
+		};
+		93E93B472EBF633200FD5B1B /* Auth */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Auth;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -175,6 +189,7 @@
 		93F959C92E699B2C00ABFEC2 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				93E93B4E2EBF636000FD5B1B /* ContentView.swift */,
 				93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */,
 				93F959C62E6998E200ABFEC2 /* GoogleService-Info.plist */,
 			);
@@ -184,6 +199,7 @@
 		93F959CA2E699B4900ABFEC2 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				93E93B412EBF62D900FD5B1B /* User.swift */,
 				93E93B322EBD267800FD5B1B /* UserProfile.swift */,
 				93B313422E6C0D30007FD59A /* CaseTemplateLibrary.swift */,
 				93B3133E2E6BDF2A007FD59A /* CaseTemplate.swift */,
@@ -212,6 +228,7 @@
 		93F959CC2E699B6100ABFEC2 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				93E93B432EBF630B00FD5B1B /* Auth */,
 				93F959EB2E69A9C900ABFEC2 /* GeminiService.swift */,
 				93F959D92E699F7D00ABFEC2 /* DataManager.swift */,
 			);
@@ -230,6 +247,7 @@
 		93F959CE2E699B8900ABFEC2 /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				93E93B472EBF633200FD5B1B /* Auth */,
 				93B313512E6ED40A007FD59A /* DebriefView.swift */,
 				93B3134F2E6EABE3007FD59A /* DifferentialInputView.swift */,
 				93B3134A2E6C1628007FD59A /* CaseListItemView.swift */,
@@ -272,6 +290,10 @@
 			buildRules = (
 			);
 			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				93E93B432EBF630B00FD5B1B /* Auth */,
+				93E93B472EBF633200FD5B1B /* Auth */,
 			);
 			name = ClinicalSimulator;
 			packageProductDependencies = (
@@ -367,9 +389,11 @@
 				93F959E42E69A3E500ABFEC2 /* DiagnosticsTabView.swift in Sources */,
 				93F959DC2E69A14900ABFEC2 /* EnhancedCaseDetail.swift in Sources */,
 				935385A32E6ADC0200CD93C2 /* EvaluationView.swift in Sources */,
+				93E93B422EBF62DB00FD5B1B /* User.swift in Sources */,
 				93F959D52E699E6100ABFEC2 /* StudentSession.swift in Sources */,
 				93B313472E6C1213007FD59A /* CaseCategoryListView.swift in Sources */,
 				93B3134E2E6C20F1007FD59A /* SpecialtyDetailsProvider.swift in Sources */,
+				93E93B4F2EBF636200FD5B1B /* ContentView.swift in Sources */,
 				9353859F2E6ADAC700CD93C2 /* NotesViewModel.swift in Sources */,
 				935385A52E6ADC5800CD93C2 /* EvaluationViewModel.swift in Sources */,
 				93B3133F2E6BDF2F007FD59A /* CaseTemplate.swift in Sources */,

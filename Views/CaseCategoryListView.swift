@@ -10,6 +10,9 @@ struct CaseCategoryListView: View {
     @Environment(\.modelContext) private var modelContext
     @AppStorage("userRoleTitle") private var userRoleTitle: String = UserProfileRole.studentMS3.title
     
+    // ✅ FIX 1: Get the current user from the environment.
+    @Environment(User.self) private var currentUser
+    
     // State for the search bar and for presenting modals.
     @State private var searchText = ""
     @State private var selectedCaseForBriefing: PatientCase?
@@ -79,7 +82,12 @@ struct CaseCategoryListView: View {
         .searchable(text: $searchText, prompt: "Search in \(specialty)")
         .sheet(item: $selectedCaseForBriefing) { patientCase in
             CaseBriefingView(patientCase: patientCase, onBegin: {
-                let session = DataManager.findOrCreateActiveSession(for: patientCase.caseId, modelContext: modelContext)
+                // ✅ FIX 2: Pass the currentUser to the DataManager call.
+                let session = DataManager.findOrCreateActiveSession(
+                    for: patientCase.caseId,
+                    user: currentUser, // <-- THE FIX
+                    modelContext: modelContext
+                )
                 // ✅ Pass userRole here
                 let viewModel = ChatViewModel(
                     patientCase: patientCase,

@@ -57,6 +57,9 @@ struct AvatarView: View {
     
     @State private var profileImage: UIImage?
     
+    // ✅ Get the current user from the environment
+    @Environment(User.self) private var currentUser
+    
     var body: some View {
         ZStack {
             Circle().fill(Color(.systemBackground))
@@ -66,10 +69,17 @@ struct AvatarView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: isStudent ? "person.fill" : "sparkle")
-                    .font(.system(size: 16))
-                    .foregroundColor(isStudent ? .primary : Color.purple)
-                    .symbolVariant(isStudent ? .none : .fill)
+                // ✅ Use the same logic as ProfileAvatarView for consistency
+                if isStudent {
+                    Text(currentUser.fullName.prefix(1))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                } else {
+                    Image(systemName: "sparkle")
+                        .font(.system(size: 16))
+                        .foregroundColor(Color.purple)
+                        .symbolVariant(.fill)
+                }
             }
         }
         .frame(width: 36, height: 36)
@@ -82,10 +92,16 @@ struct AvatarView: View {
         }
     }
     
+    // ✅ --- REWORKED loadProfileImage ---
     private func loadProfileImage() {
         if isStudent {
+            guard let filename = currentUser.profileImageFilename, !filename.isEmpty else {
+                self.profileImage = nil
+                return
+            }
+            
             let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("profileImage.jpg")
+                .appendingPathComponent(filename)
                 
             if let data = try? Data(contentsOf: url) {
                 self.profileImage = UIImage(data: data)
