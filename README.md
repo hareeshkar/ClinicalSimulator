@@ -23,7 +23,7 @@
 ### 🎯 Key Highlights
 
 - **Adaptive AI Patients**: Realistic patient interactions powered by Google's Gemini 2.5 Flash
-- **Role-Based Learning**: Personalized difficulty and feedback based on learner level (MS1-MS4, Resident, Fellow, Attending)
+- **Role-Based Learning**: Personalized difficulty and feedback based on learner level (MS1-MS4, Intern, Resident, Fellow, Attending, Consultant, EMT, Pharmacist, Nurse, PA Student, NP Student, Physiotherapy Student, Nursing Student, Respiratory Therapist)
 - **Comprehensive Simulation**: Dynamic vital signs, diagnostic workups, and treatment responses
 - **Intelligent Evaluation**: AI-driven performance assessment with detailed competency scoring
 - **Rich Case Library**: Pre-built cases across multiple specialties with varying difficulty levels
@@ -66,10 +66,10 @@
 
 ### 🗂️ Case Management
 
-- **Case Library**: Browse 100+ clinical scenarios across specialties
+- **Case Library**: Browse 20+ clinical scenarios across specialties
 - **Smart Recommendations**: AI-curated cases based on your training level
 - **Difficulty Filters**: Beginner, Intermediate, and Advanced cases
-- **Specialty Categories**: Emergency Medicine, Cardiology, Internal Medicine, and more
+- **Specialty Categories**: Emergency Medicine, Cardiology, Internal Medicine, Pediatrics, Neurology, Psychiatry, Pulmonology, Orthopedics, Infectious Disease, Endocrinology, Surgery, Obstetrics/Gynecology
 
 ---
 
@@ -172,7 +172,7 @@
 1. **Clone the repository**
 
    ```bash
-   git clone https://github.com/yourusername/ClinicalSimulator.git
+   git clone https://github.com/hareeshkar/ClinicalSimulator.git
    cd ClinicalSimulator
    ```
 
@@ -277,6 +277,13 @@ The app adapts content and evaluation based on your selected role:
 | **Medical Student (MS3-MS4)** | Intermediate     | Clinical reasoning, appropriate testing |
 | **Intern/Resident**           | Advanced         | Efficiency, evidence-based practice     |
 | **Fellow/Attending**          | Expert           | Leadership, complex decision-making     |
+| **EMT**                       | Beginner         | Basic assessment, stabilization         |
+| **Pharmacist**                | Intermediate     | Medication management, interactions     |
+| **Nurse**                     | Intermediate     | Patient care, monitoring                |
+| **PA Student/NP Student**     | Intermediate     | Clinical skills, diagnosis              |
+| **Physiotherapy Student**     | Beginner         | Rehabilitation, mobility                |
+| **Nursing Student**           | Beginner         | Basic care, assessment                  |
+| **Respiratory Therapist**     | Intermediate     | Ventilation, oxygenation                |
 
 **Set your role in Profile View** to receive personalized:
 
@@ -348,22 +355,29 @@ ClinicalSimulator/
 
 ## 🧪 Sample Cases
 
-The app includes 100+ pre-built cases covering:
+The app includes 20+ pre-built cases covering:
 
 ### Specialties
 
-- 🚨 **Emergency Medicine**: Acute presentations requiring rapid diagnosis
-- ❤️ **Cardiology**: Cardiovascular emergencies and chronic conditions
-- 🫁 **Pulmonology**: Respiratory pathology and critical care
-- 🧠 **Neurology**: Neurological emergencies and chronic diseases
-- 🩺 **Internal Medicine**: Complex multi-system presentations
-- 🏥 **Critical Care**: ICU-level management scenarios
+- 🚨 **Emergency Medicine**: Acute presentations requiring rapid diagnosis (e.g., Pulmonary Embolism, DKA, Ischemic Stroke, Septic Shock)
+- ❤️ **Cardiology**: Cardiovascular emergencies and chronic conditions (e.g., Acute MI, Aortic Dissection, Hypertensive Emergency, Pericardial Tamponade)
+- 🫁 **Pulmonology**: Respiratory pathology and critical care (e.g., COPD Exacerbation, Spontaneous Pneumothorax, Flash Pulmonary Edema, PCP in HIV)
+- 🧠 **Neurology**: Neurological emergencies and chronic diseases (e.g., Status Epilepticus, Meningitis, Guillain-Barré Syndrome, Stroke with LVO)
+- 🩺 **Internal Medicine**: Complex multi-system presentations (e.g., Community-Acquired Pneumonia, Rhabdomyolysis and AKI, Upper GI Bleed)
+- 👶 **Pediatrics**: Pediatric-specific cases (e.g., Febrile Seizure, Kawasaki Disease, Intussusception, Bronchiolitis, New Onset Type 1 Diabetes)
+- 🏥 **Critical Care**: ICU-level management scenarios (e.g., Thyroid Storm, Myxedema Coma)
+- 🦴 **Orthopedics**: Musculoskeletal injuries (e.g., Ankle Fracture, Open Tibial Fracture, Elderly Hip Fracture)
+- 🦠 **Infectious Disease**: Infectious processes (e.g., Infective Endocarditis)
+- 🫀 **Endocrinology**: Endocrine disorders (e.g., Gestational Diabetes)
+- 🔪 **Surgery**: Surgical emergencies (e.g., Perforated Peptic Ulcer, Necrotizing Fasciitis)
+- 👩‍⚕️ **Obstetrics/Gynecology**: Obstetric and gynecologic cases (e.g., Preeclampsia, Pelvic Inflammatory Disease, Ruptured Ectopic Pregnancy)
+- 🧠 **Psychiatry**: Psychiatric emergencies (e.g., Acute Manic Episode, Serotonin Syndrome, Opioid Overdose)
 
 ### Difficulty Levels
 
-- **Beginner**: Clear presentations, limited differential
-- **Intermediate**: Moderate complexity, multiple possibilities
-- **Advanced**: Complex presentations, rare diagnoses, time-critical
+- **Beginner**: Clear presentations, limited differential (e.g., Febrile Seizure, Community-Acquired Pneumonia)
+- **Intermediate**: Moderate complexity, multiple possibilities (e.g., DKA, Kawasaki Disease, COPD Exacerbation)
+- **Advanced**: Complex presentations, rare diagnoses, time-critical (e.g., Massive PE, Ischemic Stroke, Thyroid Storm)
 
 ### Example Case: Massive Pulmonary Embolism
 
@@ -619,7 +633,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ```
 MIT License
 
-Copyright (c) 2025 Clinical Simulator Team
+Copyright (c) 2025 hareeshkar
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -642,7 +656,7 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 ### Development Team
 
-- **Lead Developer**: [Your Name]
+- **Lead Developer**: hareeshkar
 - **UI/UX Design**: Clinical Simulator Team
 - **Medical Content**: Medical education consultants
 
@@ -661,13 +675,8 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 - 📧 **Email**: support@clinicalsimulator.com
 - 💬 **Discord**: [Join our community](https://discord.gg/clinicalsimulator)
-- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/yourusername/ClinicalSimulator/issues)
-- 📖 **Documentation**: [Wiki](https://github.com/yourusername/ClinicalSimulator/wiki)
-
-### Social Media
-
-- 🐦 **Twitter**: [@ClinicalSim](https://twitter.com/clinicalsim)
-- 💼 **LinkedIn**: [Clinical Simulator](https://linkedin.com/company/clinicalsimulator)
+- 🐛 **Bug Reports**: [GitHub Issues](https://github.com/hareeshkar/ClinicalSimulator/issues)
+- 📖 **Documentation**: [Wiki](https://github.com/hareeshkar/ClinicalSimulator/wiki)
 
 ---
 
@@ -694,6 +703,6 @@ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
 **Built with ❤️ for medical education**
 
-[Report Bug](https://github.com/yourusername/ClinicalSimulator/issues) • [Request Feature](https://github.com/yourusername/ClinicalSimulator/issues) • [View Demo](https://youtu.be/demo)
+[Report Bug](https://github.com/hareeshkar/ClinicalSimulator/issues) • [Request Feature](https://github.com/hareeshkar/ClinicalSimulator/issues) • [View Demo](https://youtu.be/demo)
 
 </div>
