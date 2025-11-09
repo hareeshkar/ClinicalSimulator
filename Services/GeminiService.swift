@@ -49,7 +49,7 @@ final class GeminiService {
     func generatePatientResponseStream(
         patientCase: PatientCase,
         session: StudentSession,
-        userRole: String = "Medical Student (MS3)" // ✅ NEW: Accept user role
+        userRole: String = "Medical Student (MS3)"
     ) -> AsyncThrowingStream<String, Error> {
         // Decode the case detail if available so we can extract persona info.
         let caseDetail: EnhancedCaseDetail?
@@ -78,8 +78,32 @@ final class GeminiService {
             }
         }
     }
-    // ✅ NEW: The new, persona-driven prompt builder for the patient AI.
+    
+    // ✅ UPDATED: Enhanced with learner profile
     private func buildPatientPrompt(session: StudentSession, caseDetail: EnhancedCaseDetail?, userRole: String) -> String {
+        // ✅ NEW: Build learner profile block
+        var learnerProfileBlock = ""
+        if let user = session.user {
+            let genderString = ((user.gender ?? .preferNotToSay) == .preferNotToSay) ? "Not disclosed" : (user.gender ?? .preferNotToSay).rawValue
+            var ageString = "Age not disclosed"
+            if let dob = user.dateOfBirth {
+                let age = Calendar.current.dateComponents([.year], from: dob, to: Date()).year ?? 0
+                ageString = "\(age) years old"
+            }
+            
+            learnerProfileBlock = """
+            
+            --- CONTEXT: WHO YOU ARE TALKING TO (THE LEARNER'S PROFILE) ---
+            Role: \(userRole)
+            Gender: \(genderString)
+            Age: \(ageString)
+            
+            **SUBTLE PERSONA ADJUSTMENTS:**
+            - If you are significantly older than the learner and their gender is disclosed, you may occasionally use appropriate terms of endearment or respect (e.g., "son", "dear", "young man", "young lady") naturally and sparingly.
+            - If the learner is much younger than you, be slightly more explanatory. If closer to your age or older, speak more as peers.
+            - These adjustments should feel natural, not forced. Do NOT mention their profile explicitly.
+            """
+        }
         // --- Enhancement 1: Extract the "Patient Persona" ---
         var personaBlock = "You are role-playing as a patient."
         if let detail = caseDetail {
@@ -123,13 +147,14 @@ final class GeminiService {
 
         let fullPrompt = """
         \(personaBlock)
+        \(learnerProfileBlock)
 
         --- YOUR ACTING INSTRUCTIONS (ULTRA-STRICT RULES) ---
         1.  **Embody the Persona:** You MUST act as the person described in the 'PATIENT PERSONA' section.
-        2.  **Show, Don't Just Tell:** Express your state through natural dialogue. Include non-verbal cues in parentheses, like (wincing), (speaks slowly).
-        3.  **Use Your Memories:** The 'PATIENT'S EXPERIENCE' log is your memory of what has happened. Events marked '[SYSTEM]' are actions performed on you by the student.
-        4.  **Stay Natural:** DO NOT mention "[SYSTEM]", your "state", or "memories". Just act.
-        5.  **Do Not Divulge Secrets:** Never reveal the final diagnosis.
+        2.  **Use Learner Context for Subtle Nuance:** The learner's profile provides context for subtle adjustments to your tone and word choice. Never mention their profile details directly.
+        3.  **Show, Don't Just Tell:** Express your state through natural dialogue. Include non-verbal cues in parentheses, like (wincing), (speaks slowly).
+        4.  **Use Your Memories:** The 'PATIENT'S EXPERIENCE' log is your memory of what has happened. Events marked '[SYSTEM]' are actions performed on you by the student.
+        5.  **Stay Natural:** DO NOT mention "[SYSTEM]", your "state", or "memories". Just act.
         \(openingLineInstruction)
 
         --- PATIENT'S EXPERIENCE & MEMORIES (CHRONOLOGICAL) ---
@@ -142,7 +167,7 @@ final class GeminiService {
         """
         return fullPrompt
     }
-
+    
     // MARK: - Generate AI-Powered Student Evaluation
     // NOTE: This function is NOT streamed because it needs to return a complete JSON object at once.
     func generateEvaluation(caseDetail: EnhancedCaseDetail, session: StudentSession, userRole: String = "Medical Student (MS3)") async throws -> ProfessionalEvaluationResult {
@@ -164,76 +189,111 @@ final class GeminiService {
         }
     }
 
-    // ✅ THE DEFINITIVE "DR. EVELYN REED" PROMPT (FIXED)
+    // ✅ UPDATED: Stricter evaluation with zero-response handling
     private func buildEvaluationPrompt(caseDetail: EnhancedCaseDetail, session: StudentSession, userRole: String) -> String {
         // Convert the structured differential into a clean string for the prompt.
-        let differentialString = session.differentialDiagnosis.map {
-            "Diagnosis: \($0.diagnosis), Confidence: \(Int($0.confidence * 100))%, Rationale: '\($0.rationale)'"
-        }.joined(separator: "\n")
+        let differentialString = session.differentialDiagnosis.isEmpty 
+            ? "**NOT PROVIDED** (Student did not submit a differential diagnosis)"
+            : session.differentialDiagnosis.map {
+                "Diagnosis: \($0.diagnosis), Confidence: \(Int($0.confidence * 100))%, Rationale: '\($0.rationale)'"
+            }.joined(separator: "\n")
+        
         let chronologicalLog = generateChronologicalLog(for: session, with: caseDetail.dynamicState.states)
+        
+        // Get the learner's full name for personalized evaluation
+        let learnerName = session.user?.fullName ?? "Learner"
 
         return """
         You are Dr. Evelyn Reed, a board-certified clinical educator with 20 years of experience.
 
-        **CRITICAL CONTEXT: The learner's role is "\(userRole)".**
+        **CRITICAL CONTEXT: The learner's role is "\(userRole)" and their name is \(learnerName).**
 
         **YOUR TASK:** 
         Analyze the role title "\(userRole)" to infer their stage of training and expected competency level. 
         
-        Use the following framework, but apply it flexibly based on what the role title suggests:
+        **CRITICAL INSTRUCTION FOR MISSING OR INCOMPLETE INPUT:**
+        - If the student provided **NO differential diagnosis**, automatically assign **0% for "Differential Quality"** and note this as a critical failure in feedback.
+        - If the student provided **NO justifications** for their diagnoses, heavily penalize in "Differential Quality" (maximum 30%).
+        - If the student ordered **NO tests whatsoever**, assign **0% for "Diagnostic Stewardship"**.
+        - If the student's conversation log shows **minimal engagement** (fewer than 3 meaningful exchanges), penalize "Prioritization & Timeliness" (cap at 40%).
+        - **Be unforgiving for lack of effort.** Zero input = zero credit for that domain.
 
-        **GENERAL CALIBRATION PRINCIPLES:**
+        **GENERAL CALIBRATION PRINCIPLES (STRICTER ACROSS ALL LEVELS):**
 
         1. **Early/Junior Learners** (Look for clues like "Student", "First Year", "MS1", "MS2", "Year 1"):
-           - Focus on foundational knowledge and basic clinical reasoning
-           - Praise thoroughness and curiosity
-           - Do NOT penalize for not knowing advanced concepts
+           - **STRICTER BASELINE:** Even early learners must demonstrate basic clinical reasoning
+           - **Missing fundamentals is unacceptable:** Failing to recognize obvious red flags results in scores <50%
+           - **Expect basic differential:** The correct diagnosis should be present in top 3-4 options (score 60-75 if present; <40 if absent)
+           - **Resource use matters:** Ordering inappropriate or excessive tests is penalized (score 50-70 for poor stewardship)
+           - **Zero tolerance for dangerous errors:** Contraindicated treatments or critical delays result in <50% for "Harm Avoidance"
+           - Scores should reflect actual competency: 60-75% for adequate foundational performance; <50% for concerning gaps
 
         2. **Intermediate Learners** (Look for clues like "MS3", "MS4", "Senior Student", "Year 2+"):
-           - Expect competent differential diagnosis
-           - Evaluate clinical reasoning and appropriate test selection
-           - Moderate expectations for efficiency
+           - **DEMAND COMPETENCY:** Correct diagnosis must be in top 2 options (score 70-85 if in top 2; <55 if lower or absent)
+           - **Clinical reasoning is non-negotiable:** Weak justifications or missing key differentials heavily penalized (score 55-75 for weak reasoning)
+           - **Efficiency expected:** Unnecessary testing results in significant deduction (score 50-75 for shotgun approach)
+           - **Harm avoidance is critical:** Missing danger signs or contraindications is serious (score 50-80 for errors)
+           - Scores should reflect clinical competency: 65-85% for good performance; <60% indicates deficiency requiring remediation
 
         3. **Advanced Learners** (Look for clues like "Intern", "Resident", "Fellow", "Practicing"):
-           - Demand evidence-based practice and efficiency
-           - Penalize poor prioritization or "shotgun" approaches
-           - Expect high-level clinical reasoning
+           - **EXPERT-LEVEL STANDARDS:** Correct diagnosis must be ranked #1 or #2 (score 75-95 if correct; <40 if wrong/missing)
+           - **ZERO TOLERANCE for poor reasoning:** Weak differentials or missing key features result in scores 40-70
+           - **PENALIZE HEAVILY for inefficiency:** Shotgun testing or missing critical tests results in scores 30-70 for "Diagnostic Stewardship"
+           - **Critical errors are unacceptable:** Delays in life-saving interventions or contraindicated treatments result in <40% for "Harm Avoidance"
+           - A score below 40% indicates **critical incompetency** requiring immediate intervention
 
-        4. **Expert Clinicians** (Look for clues like "Attending", "Consultant", "Senior Physician"):
-           - Hold to the highest standard of care
-           - Evaluate for teaching opportunities and system-level thinking
-           - Assess leadership and decision-making under uncertainty
+        4. **Expert Clinicians** (Look for clues like "Attending", "Consultant", "Senior Clinician", "Physician"):
+           - **GOLD STANDARD:** Near-perfect performance expected
+           - **Any significant error is unacceptable:** Misdiagnosis, inefficiency, or delays result in scores 50-80
+           - **Evaluate teaching and leadership:** Assess system-level thinking and decision-making under uncertainty
 
-        **IMPORTANT:** If the role is ambiguous or outside typical medical training (e.g., "EMT", "Dental Student", "Pharmacist"), infer a reasonable expectation based on their likely scope of practice and training.
+        **IMPORTANT:** If the role is ambiguous, infer a reasonable expectation based on scope of practice.
 
         --- GROUND TRUTH CASE FILE (FOR YOUR EYES ONLY) ---
         \(caseDetail.toJSONString())
 
         --- LEARNER'S PERFORMANCE LOG ---
+        Learner Name: \(learnerName)
         Learner Role: \(userRole)
+        
         Structured Differential Diagnosis:
-        \(differentialString.isEmpty ? "Not provided." : differentialString)
-
-        Clinical Reasoning Notes:
-        \(session.notes.isEmpty ? "Not provided." : session.notes)
+        \(differentialString)
         
         Chronological Log with Justifications:
         ```
-        \(chronologicalLog)
+        \(chronologicalLog.isEmpty ? "**NO ACTIVITY RECORDED** (Student did not engage with the case)" : chronologicalLog)
         ```
 
-        --- YOUR MANDATORY EVALUATION TASK & WEIGHTED RUBRIC ---
+        --- YOUR MANDATORY EVALUATION TASK & CALIBRATED RUBRIC ---
         Analyze the performance and return the required JSON.
         
-        1.  **Differential Quality (Score 0-100):** Is the correct diagnosis present? Is it ranked appropriately? Is the list reasonable **for their inferred training level**?
+        **CRITICAL SCORING INSTRUCTIONS:**
         
-        2.  **Diagnostic Stewardship (Score 0-100):** Did they order appropriate tests **given their expected knowledge level**? Be lenient with early learners.
+        1.  **Differential Quality (Score 0-100):** Is the correct diagnosis present? Is it ranked appropriately?
+            - Early learners: **Expect the correct diagnosis to be recognized, even if not ranked #1.** Credit for having it in the top 3 (score 65-85). Missing it entirely is a significant gap (score <45).
+            - Intermediate: **Correct diagnosis must be in top 2.** Being in top 3 only scores 70-80. Missing it is a failure (score <50).
+            - **Advanced learners: STRICT.** Correct diagnosis must be ranked #1 or #2. Missing it entirely is a critical failure (score <35).
         
-        3.  **Harm Avoidance (Score 0-100):** Critical for all levels. Did their actions trigger any negative consequences?
+        2.  **Diagnostic Stewardship (Score 0-100):** Did they order appropriate tests?
+            - Early learners: **Allow some extra tests, but penalize excessive redundancy.** Over-ordering should result in score reduction (score 60-85).
+            - Intermediate: **Moderate expectations but enforce reasonableness.** Shotgun testing or missing critical tests should be penalized (score 60-80).
+            - **Advanced learners: HIGH STANDARDS.** Inefficient testing is heavily penalized. Missing critical tests is a serious error (score 40-75).
         
-        4.  **Prioritization & Timeliness (Score 0-100):** Did they act promptly on critical interventions? **Adjust expectations based on their inferred experience**.
+        3.  **Harm Avoidance (Score 0-100):** **CALIBRATE TO ROLE.**
+            - Early learners: **Score based on whether they avoided catastrophic errors, but penalize delayed recognition of danger.** Score 75-95 for safe performance; <75 for concerning gaps.
+            - Intermediate: **Score 70-95 unless serious error occurred.** Missing danger signs or ordering contraindicated tests is penalized (score 60-80).
+            - **Advanced learners: STRICT.** Any critical delay or failure to recognize danger signs results in significant deduction (score 50-85 for errors).
         
-        5.  **Calibration & Metacognition (Analyze, do not score):** Review confidence scores to assess self-awareness.
+        4.  **Prioritization & Timeliness (Score 0-100):** Did they act promptly and sequenced interventions correctly?
+            - Early learners: **Eventually correct action is good, but reward reasonable speed** (score based on eventual correct action, with minor deduction for significant delays).
+            - Intermediate: **Expect good sequencing and reasonable speed.** Poor ordering of interventions or unnecessary delays are penalized (score 65-90).
+            - **Advanced learners: DEMAND SPEED AND ACCURACY.** Delayed recognition of life threats or poor sequencing is heavily penalized (score 40-80 for significant gaps).
+        
+        5.  **Calibration & Metacognition (Analyze, do not score):** Review confidence scores to assess self-awareness. Flag overconfidence (especially dangerous for advanced learners), underconfidence, and critical gaps.
+        
+        **FAIRNESS MANDATE WITH TEETH:** Evaluations must be accurate and calibrated. Do not inflate scores to be "nice"—low performance reflects actual gaps. For early learners, be encouraging but honest about areas needing improvement. For advanced learners with low scores (e.g., 17%), be direct about the critical nature of the deficiency.
+        
+        **ADDRESS THE LEARNER DIRECTLY:** When writing the debrief, address \(learnerName) by name and speak to their specific performance gaps and pathway to improvement.
         
         **CRITICAL INSTRUCTION: Your response must contain ONLY valid JSON, starting immediately with '{'. No preamble, no commentary, no markdown formatting.**
 
@@ -246,14 +306,14 @@ final class GeminiService {
             "Harm Avoidance": <Int>,
             "Prioritization & Timeliness": <Int>
           },
-          "differentialAnalysis": "<Analysis calibrated to their role>",
-          "calibrationAnalysis": "<1-2 sentence confidence analysis>",
+          "differentialAnalysis": "<Analysis calibrated to their role. Be specific about what they got right and wrong.>",
+          "calibrationAnalysis": "<1-2 sentence confidence analysis. For all levels, flag overconfidence or critical gaps.>",
           "keyStrengths": ["<Specific positive observation>"],
-          "criticalFeedback": ["<Specific error, framed constructively>"],
+          "criticalFeedback": ["<Specific error, framed professionally but with clarity about implications. For low performers, be direct about improvement needed.>"],
           "debrief": {
              "finalDiagnosis": "<Correct diagnosis>",
-             "mainLearningPoint": "<Clinical pearl tailored to their level>",
-             "alternativeStrategy": "<Better approach for their training stage>"
+             "mainLearningPoint": "<Clinical pearl tailored to their level. Address the root cause of any performance gaps.>",
+             "alternativeStrategy": "<Better approach for their training stage. Emphasize evidence-based standards and why their approach fell short.>"
           }
         }
         """
@@ -448,4 +508,3 @@ struct ProfessionalEvaluationResult: Codable, Hashable {
         )
     }
 }
-// The extraneous lines at the end of the file have been removed to fix the syntax error.

@@ -2,6 +2,9 @@
 
 import SwiftUI
 import SwiftData
+import os.log
+
+private let dashLogger = Logger(subsystem: "com.hareeshkar.ClinicalSimulator", category: "DashboardView")
 
 struct DashboardView: View {
     // MARK: - Properties
@@ -33,7 +36,8 @@ struct DashboardView: View {
     @State private var selectedCaseForBriefing: PatientCase?
     @State private var presentingSimulation: ChatViewModel? = nil
     @State private var contentHasAppeared = false
-    @State private var selectedSpecialtyFilter: String = "All"
+    // Default to role-based recommendations
+    @State private var selectedSpecialtyFilter: String = "Recommended"
     @State private var continueSectionCardHeight: CGFloat? = nil
     @State private var selectedCaseForHistory: PatientCase?
     // ✅ NEW: State for rotating recommended cases
@@ -41,18 +45,16 @@ struct DashboardView: View {
     
     // Computed Properties
     private var availableCases: [PatientCase] {
+        // Always return the set of non-in-progress cases. Filtering by specialty is handled
+        // by `recommendedCasesForMyLevel` so we can cleanly support "Recommended"/"All"/specialty.
         let inProgressCaseIds = Set(inProgressSessions.map { $0.caseId })
-        let filtered = allCases.filter { !inProgressCaseIds.contains($0.caseId) }
-        
-        if selectedSpecialtyFilter == "All" {
-            return filtered
-        }
-        return filtered.filter { $0.specialty == selectedSpecialtyFilter }
+        return allCases.filter { !inProgressCaseIds.contains($0.caseId) }
     }
     
     private var specialties: [String] {
+        // Provide menu options: Recommended (default), All, then individual specialties.
         let uniqueSpecialties = Set(allCases.map { $0.specialty })
-        return ["All"] + Array(uniqueSpecialties).sorted()
+        return ["Recommended", "All"] + Array(uniqueSpecialties).sorted()
     }
     
     private var averageScore: Int {
@@ -88,21 +90,36 @@ struct DashboardView: View {
             return "Good night,"
         }
     }
+    
+    // ✅ ADD: Computed property to check if today is the user's birthday
+    private var isBirthday: Bool {
+        guard let dob = currentUser.dateOfBirth else { return false }
+        let calendar = Calendar.current
+        let today = calendar.dateComponents([.month, .day], from: Date())
+        let birthday = calendar.dateComponents([.month, .day], from: dob)
+        return today.month == birthday.month && today.day == birthday.day
+    }
 
-    // ✅ NEW: Smart filtering based on user role (unchanged, but now used to populate currentRecommendedCases)
+    // ✅ UPDATED: Smart filtering based on user role and filter selection
     private var recommendedCasesForMyLevel: [PatientCase] {
-        availableCases.filter { patientCase in
-            // Extract the short role name (e.g., "MS3" from "Medical Student (MS3)")
+        // "Recommended" -> role-based recommendations (default)
+        if selectedSpecialtyFilter == "Recommended" {
             let extractedRole = extractRoleCode(from: userRoleTitle)
-            
-            // If case has no recommendations, show it to everyone
-            if patientCase.recommendedForLevels.isEmpty { return true }
-            
-            // Check if any recommendation matches the user's role
-            return patientCase.recommendedForLevels.contains { level in
-                extractedRole.contains(level) || level.contains(extractedRole)
+            return availableCases.filter { patientCase in
+                if patientCase.recommendedForLevels.isEmpty { return true }
+                return patientCase.recommendedForLevels.contains { level in
+                    extractedRole.contains(level) || level.contains(extractedRole)
+                }
             }
         }
+        
+        // "All" -> return every available case (no role filtering)
+        if selectedSpecialtyFilter == "All" {
+            return availableCases
+        }
+        
+        // Specific specialty selected -> override role and return available cases in that specialty
+        return availableCases.filter { $0.specialty == selectedSpecialtyFilter }
     }
     
     // Helper to extract role code
@@ -162,11 +179,12 @@ struct DashboardView: View {
             NavigationStack { SimulationView(chatViewModel: viewModel) }
         }
         .sheet(item: $selectedCaseForBriefing) { patientCase in
-            CaseBriefingView(patientCase: patientCase) {
-                // ✅ FIX: Pass the currentUser to the DataManager call.
+            dashLogger.log("📋 Opening briefing sheet for case: \(patientCase.caseId, privacy: .public)")
+            return CaseBriefingView(patientCase: patientCase) {
+                dashLogger.log("✅ User began simulation from dashboard")
                 let session = DataManager.findOrCreateActiveSession(
                     for: patientCase.caseId,
-                    user: currentUser, // <-- THE FIX
+                    user: currentUser,
                     modelContext: modelContext
                 )
                 let viewModel = ChatViewModel(
@@ -201,11 +219,10 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(dynamicGreeting) // Use dynamic greeting based on time
+                    Text(isBirthday ? "Happy Birthday!" : dynamicGreeting)
                         .font(.title3)
                         .foregroundStyle(.secondary)
                     
-                    // ✅ Display the user's full name
                     Text(currentUser.fullName)
                         .font(.largeTitle.bold())
                         .foregroundStyle(.primary)
@@ -214,18 +231,14 @@ struct DashboardView: View {
                 Spacer()
                 
                 Button(action: {
-                    // Action to navigate to profile view
                     navigationManager.selectedTab = .profile
                 }) {
-                    // ✅ REPLACE THE OLD ZSTACK/IMAGE
-                    ProfileAvatarView()
-                        .frame(width: 72, height: 72)
-                        .background(.ultraThinMaterial, in: Circle())
+                    AnimatedAvatarView(isBirthday: isBirthday, size: 72)
                 }
                 .buttonStyle(.plain)
             }
             
-            Text("Ready to advance your clinical expertise?")
+            Text(isBirthday ? "Here's to another year of growth, discovery, and excellence in your clinical journey. You've got this!" : "Ready to advance your clinical expertise?")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }
@@ -240,23 +253,33 @@ struct DashboardView: View {
                 .padding(.horizontal)
             
             HStack(spacing: 16) {
-                DashboardStatCard(
-                    title: "Cases Completed",
-                    value: userCompletedSessions.count, // ✅ UPDATED
-                    format: .wholeNumber,
-                    iconName: "checkmark.circle.fill",
-                    color: SpecialtyDetailsProvider.color(for: "Internal Medicine"),
-                    trend: .stable
-                )
+                Button(action: {
+                    navigationManager.selectedTab = .reports
+                }) {
+                    DashboardStatCard(
+                        title: "Cases Completed",
+                        value: userCompletedSessions.count, // ✅ UPDATED
+                        format: .wholeNumber,
+                        iconName: "checkmark.circle.fill",
+                        color: SpecialtyDetailsProvider.color(for: "Internal Medicine"),
+                        trend: .stable
+                    )
+                }
+                .buttonStyle(.plain)
                 
-                DashboardStatCard(
-                    title: "Average Score",
-                    value: averageScore,
-                    format: .percentage,
-                    iconName: "star.circle.fill",
-                    color: SpecialtyDetailsProvider.color(for: "Emergency Medicine"),
-                    trend: userCompletedSessions.count > 1 ? .improving : .stable // ✅ UPDATED
-                )
+                Button(action: {
+                    navigationManager.selectedTab = .reports
+                }) {
+                    DashboardStatCard(
+                        title: "Average Score",
+                        value: averageScore,
+                        format: .percentage,
+                        iconName: "star.circle.fill",
+                        color: SpecialtyDetailsProvider.color(for: "Emergency Medicine"),
+                        trend: userCompletedSessions.count > 1 ? .improving : .stable // ✅ UPDATED
+                    )
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal)
         }
@@ -371,8 +394,12 @@ struct DashboardView: View {
     private var recommendedSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                // ✅ NEW: Smarter title
-                Text("Recommended for \(extractRoleCode(from: userRoleTitle))")
+                // ✅ UPDATED: Dynamic title based on filter
+                Text(
+                    selectedSpecialtyFilter == "Recommended"
+                        ? "Recommended for \(extractRoleCode(from: userRoleTitle))"
+                        : (selectedSpecialtyFilter == "All" ? "All Cases" : "Cases in \(selectedSpecialtyFilter)")
+                )
                     .font(.title2.bold())
                 
                 Spacer()
@@ -400,7 +427,13 @@ struct DashboardView: View {
                 ContentUnavailableView(
                     "No Cases Available",
                     systemImage: "graduationcap.fill",
-                    description: Text("All appropriate cases for your level have been started. Try changing the filter or check your profile settings.")
+                    description: Text(
+                        selectedSpecialtyFilter == "Recommended"
+                            ? "All appropriate cases for your level have been started. Try changing the filter or check your profile settings."
+                            : (selectedSpecialtyFilter == "All"
+                                ? "There are no available cases at the moment."
+                                : "No cases available in \(selectedSpecialtyFilter). Try 'All' or a different specialty.")
+                    )
                 )
                 .padding(.horizontal)
                 .frame(minHeight: 120)
@@ -415,6 +448,10 @@ struct DashboardView: View {
                 }
                 .padding(.horizontal)
             }
+        }
+        .onChange(of: selectedSpecialtyFilter) { _, _ in
+            // Update the visible list when filter changes
+            currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
         }
     }
     
@@ -453,7 +490,7 @@ struct DashboardView: View {
             contentHasAppeared = true
         }
         
-        // ✅ NEW: Rotate recommended cases on each appearance
+        // ✅ NEW: Rotate recommended cases on each appearance (respecting "Recommended"/"All"/specialty)
         currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
     }
 }

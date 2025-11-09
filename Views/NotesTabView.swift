@@ -10,11 +10,8 @@ struct NotesTabView: View {
         // A NavigationStack provides a title and toolbar context.
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 32) { // Increased spacing for visual separation
-                    
+                VStack(alignment: .leading, spacing: 32) {
                     differentialDiagnosisSection
-                    
-                    clinicalReasoningSection
                     
                 }
                 .padding()
@@ -41,9 +38,13 @@ struct NotesTabView: View {
                 Label("Differential Diagnosis", systemImage: "brain.head.profile.fill")
                     .font(.title2.bold())
                 Spacer()
-                Button("Manage", systemImage: "list.bullet", action: { isPresentingDifferentialSheet = true })
-                    .buttonStyle(.bordered)
-                    .tint(.secondary)
+                Button(
+                    viewModel.differentialDiagnosis.isEmpty ? "Add" : "Manage",
+                    systemImage: viewModel.differentialDiagnosis.isEmpty ? "plus.circle.fill" : "list.bullet",
+                    action: { isPresentingDifferentialSheet = true }
+                )
+                .buttonStyle(.bordered)
+                .tint(.secondary)
             }
             
             // The view intelligently switches between the empty state and the list.
@@ -60,43 +61,13 @@ struct NotesTabView: View {
         }
     }
     
-    /// The dedicated section for long-form clinical notes.
-    @ViewBuilder
-    private var clinicalReasoningSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Label("Clinical Reasoning Notes", systemImage: "pencil.and.scribble")
-                .font(.title2.bold())
-
-            // The TextEditor is now visually styled to feel like a "scratchpad".
-            TextEditor(text: $viewModel.notes)
-                .font(.callout)
-                .frame(minHeight: 150)
-                .padding(16) // This is the inset for the actual typed text.
-                .background(.background)
-                .cornerRadius(12)
-                .overlay(
-                
-                viewModel.notes.isEmpty ?
-                    Text("Justify your differential. What are the key findings supporting your hypotheses? What are you trying to rule out?")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        // 1. Force the placeholder to the top-left of the overlay frame.
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                        // 2. Apply the *exact same padding* as the TextEditor's text.
-                        .padding(22)
-                        .allowsHitTesting(false)
-                    : nil
-                )
-                .onChange(of: viewModel.notes) { viewModel.save() }
-        }
-    }
     /// An instructional and visually appealing empty state.
     @ViewBuilder
     private var emptyDiagnosisView: some View {
         VStack(spacing: 12) {
             Text("No Hypotheses Added")
                 .font(.headline)
-            Text("Tap 'Manage' to rank your potential diagnoses. This is a critical step before ordering tests.")
+            Text("Tap 'Add' to create your differential diagnosis. Each diagnosis should include your confidence level and clinical justification.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

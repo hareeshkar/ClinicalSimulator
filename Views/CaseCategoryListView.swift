@@ -2,6 +2,9 @@
 
 import SwiftUI
 import SwiftData
+import os.log
+
+private let categoryLogger = Logger(subsystem: "com.hareeshkar.ClinicalSimulator", category: "CaseCategoryListView")
 
 struct CaseCategoryListView: View {
     // This view receives the specialty it needs to display.
@@ -81,7 +84,9 @@ struct CaseCategoryListView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Search in \(specialty)")
         .sheet(item: $selectedCaseForBriefing) { patientCase in
-            CaseBriefingView(patientCase: patientCase, onBegin: {
+            categoryLogger.log("📋 Opening briefing sheet from category view for case: \(patientCase.caseId, privacy: .public)")
+            return CaseBriefingView(patientCase: patientCase, onBegin: {
+                categoryLogger.log("✅ User began simulation from category list")
                 // ✅ FIX 2: Pass the currentUser to the DataManager call.
                 let session = DataManager.findOrCreateActiveSession(
                     for: patientCase.caseId,

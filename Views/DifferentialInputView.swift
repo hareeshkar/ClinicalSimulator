@@ -9,6 +9,12 @@ struct DifferentialInputView: View {
     // A local copy for safe, transactional editing.
     @State private var items: [DifferentialItem] = []
     
+    // ✅ Track the active (editable) item
+    @State private var activeItemId: UUID?
+    
+    // ✅ Deferred removal to avoid index issues
+    @State private var itemsToDelete: Set<UUID> = []
+    
     // Haptic feedback engine.
     private let hapticGenerator = UISelectionFeedbackGenerator()
     
@@ -21,12 +27,14 @@ struct DifferentialInputView: View {
                     
                     // The animation is now smoother with a refined spring.
                     ForEach($items) { $item in
-                        diagnosisEditorCard(for: $item)
+                        let isActive = item.id == activeItemId
+                        diagnosisEditorCard(for: $item, isActive: isActive)
                             .transition(.asymmetric(
                                 insertion: .scale(scale: 0.95).combined(with: .opacity),
                                 removal: .move(edge: .leading).combined(with: .opacity))
                             )
                     }
+                    // This animation correctly handles items being added/removed
                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: items)
                     
                     if items.count < 3 {
@@ -43,6 +51,16 @@ struct DifferentialInputView: View {
                 trailingToolbarItem
             }
             .onAppear(perform: setupInitialState)
+            // ✅ Process deletions outside view building
+            .onChange(of: itemsToDelete) { _, newDeletes in
+                for id in newDeletes {
+                    items.removeAll { $0.id == id }
+                    if id == activeItemId {
+                        activeItemId = items.last?.id ?? nil
+                    }
+                }
+                itemsToDelete.removeAll()
+            }
         }
     }
     
@@ -51,29 +69,33 @@ struct DifferentialInputView: View {
     /// A concise header to guide the user.
     @ViewBuilder
     private var instructionsHeader: some View {
-        Text("Rank up to three potential diagnoses and set your confidence level for each.")
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal)
+        VStack(spacing: 8) {
+            Text("Rank up to three potential diagnoses and set your confidence level for each.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+            
+            Text("Tap 'Save' to confirm your changes.")
+                .font(.caption)
+                .foregroundStyle(.secondary.opacity(0.7))
+        }
     }
     
-    // ✅ --- THE FULLY REDESIGNED EDITOR CARD ---
     @ViewBuilder
-    private func diagnosisEditorCard(for item: Binding<DifferentialItem>) -> some View {
-        VStack(spacing: 0) { // Use spacing: 0 and control with padding/dividers
+    private func diagnosisEditorCard(for item: Binding<DifferentialItem>, isActive: Bool) -> some View {
+        VStack(spacing: 0) {
             
             // --- Diagnosis Text Field ---
             HStack {
                 TextField("Diagnosis (e.g., Acute Appendicitis)", text: item.diagnosis)
-                    .font(.headline.weight(.semibold)) // Bolder font for emphasis
+                    .font(.headline.weight(.semibold))
+                    .disabled(!isActive) // ✅ Disable if not active
                 
                 Button(role: .destructive, action: {
-                    withAnimation(.spring()) {
-                        items.removeAll { $0.id == item.id }
-                    }
+                    // ✅ OPTIMIZED: Logic extracted to a clean function
+                    requestItemDeletion(for: item)
                 }) {
-                    // More standard 'trash' icon
                     Image(systemName: "trash")
                         .font(.title3)
                         .foregroundStyle(.red)
@@ -85,13 +107,15 @@ struct DifferentialInputView: View {
             // --- Confidence Slider ---
             VStack(alignment: .leading, spacing: 4) {
                 Text("Confidence: \(Int(item.confidence.wrappedValue * 100))%")
-                    .font(.subheadline) // Consistent label font
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
                 Slider(value: item.confidence, in: 0...1, step: 0.05)
+                    .disabled(!isActive) // ✅ Disable if not active
                     .onChange(of: item.confidence.wrappedValue) { _, _ in
                         hapticGenerator.selectionChanged()
                     }
+                    .opacity(isActive ? 1.0 : 0.5) // ✅ Grey out disabled slider
             }
             
             // --- Divider for Visual Separation ---
@@ -101,20 +125,23 @@ struct DifferentialInputView: View {
             // --- Rationale TextEditor ---
             VStack(alignment: .leading, spacing: 8) {
                 Text("Justification")
-                    .font(.subheadline) // Consistent label font
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                 
                 TextEditor(text: item.rationale)
                     .font(.callout)
                     .frame(height: 70)
                     .padding(8)
+                    .disabled(!isActive) // ✅ Disable if not active
+                    .opacity(isActive ? 1.0 : 0.6) // ✅ Grey out when not active
                     .clipShape(RoundedRectangle(cornerRadius: 8))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color(.systemGray5), lineWidth: 1)
+                            .stroke(isActive ? Color(.systemGray5) : Color.gray.opacity(0.3), lineWidth: 1)
                     )
+                    // ✅ This is the correct, standard way to do a TextEditor placeholder
                     .overlay(
-                        item.rationale.wrappedValue.isEmpty ?
+                        item.rationale.wrappedValue.isEmpty && isActive ?
                         Text("Why this diagnosis? Note key findings.")
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -125,21 +152,32 @@ struct DifferentialInputView: View {
                     )
             }
         }
-        .padding(16) // Consistent padding
-        .background(.background)
+        .padding(16)
+        .background(isActive ? Color(.systemBackground) : Color(.systemGray6).opacity(0.5))
         .cornerRadius(16)
-        // Softer shadow for a more refined look
-        .shadow(color: .black.opacity(0.05), radius: 5)
+        .shadow(color: .black.opacity(isActive ? 0.05 : 0.02), radius: 5)
+        // ✅ ADDED: Allows tapping an inactive card to make it active.
+        .onTapGesture {
+            if !isActive {
+                // Animate the change between active/inactive states
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    activeItemId = item.id.wrappedValue
+                }
+                hapticGenerator.selectionChanged()
+            }
+        }
     }
     
     @ViewBuilder
     private var addDiagnosisButton: some View {
         Button(action: {
             withAnimation(.spring()) {
-                items.append(DifferentialItem(diagnosis: "", confidence: 0.5, rationale: ""))
+                let newItem = DifferentialItem(diagnosis: "", confidence: 0.5, rationale: "")
+                items.append(newItem)
+                activeItemId = newItem.id // ✅ Set new item as active
             }
         }) {
-            Label("Add Diagnosis", systemImage: "plus")
+            Label("Add Next Diagnosis", systemImage: "plus")
                 .fontWeight(.semibold)
                 .frame(maxWidth: .infinity)
         }
@@ -157,9 +195,8 @@ struct DifferentialInputView: View {
     
     private var trailingToolbarItem: ToolbarItem<(), some View> {
         ToolbarItem(placement: .confirmationAction) {
-            Button("Save", action: saveChanges)
+            Button("Save", action: saveAndDismiss)
                 .fontWeight(.semibold)
-                .disabled(items.allSatisfy { $0.diagnosis.trimmingCharacters(in: .whitespaces).isEmpty })
         }
     }
     
@@ -168,11 +205,37 @@ struct DifferentialInputView: View {
     private func setupInitialState() {
         hapticGenerator.prepare()
         self.items = viewModel.differentialDiagnosis
+        
+        // ✅ Preload one empty diagnosis if none exist
+        if items.isEmpty {
+            let newItem = DifferentialItem(diagnosis: "", confidence: 0.5, rationale: "")
+            items.append(newItem)
+            activeItemId = newItem.id
+        } else {
+            // If loading existing, set the last one as active
+            activeItemId = items.last?.id
+        }
     }
     
-    private func saveChanges() {
-        viewModel.differentialDiagnosis = items.filter { !$0.diagnosis.trimmingCharacters(in: .whitespaces).isEmpty }
+    /// ✅ OPTIMIZED: Extracted logic from the button for clarity.
+    private func requestItemDeletion(for item: Binding<DifferentialItem>) {
+        if items.count > 1 {
+            // ✅ Queue for deletion if more than one item
+            itemsToDelete.insert(item.id.wrappedValue)
+        } else {
+            // ✅ Clear fields if only one item
+            item.diagnosis.wrappedValue = ""
+            item.confidence.wrappedValue = 0.5
+            item.rationale.wrappedValue = ""
+        }
+    }
+    
+    private func saveAndDismiss() {
+        // Filter out any diagnoses that are still empty
+        viewModel.differentialDiagnosis = items.filter { !$0.diagnosis.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         viewModel.save()
+        
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         dismiss()
     }
 }

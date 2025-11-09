@@ -16,6 +16,11 @@ struct SignUpView: View {
     @State private var tempImageForCropping: UIImage?
     @State private var isShowingCropper = false
     
+    // ✅ NEW: State for gender and DOB
+    @State private var selectedGender: Gender = .preferNotToSay
+    @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -25, to: Date()) ?? Date()
+    @State private var provideDOB = false
+    
     // View State
     @State private var errorMessage: String?
     @State private var isSigningUp = false
@@ -52,6 +57,9 @@ struct SignUpView: View {
                             emailField
                             passwordField
                             confirmPasswordField
+                            // ✅ NEW: Add gender and DOB fields
+                            genderPicker
+                            dobSection
                             rolePicker
                         }
                         // Shake animation on error
@@ -158,6 +166,19 @@ struct SignUpView: View {
     
     private var adaptiveSystemBackground: Color {
         Color(.systemBackground)
+    }
+    
+    // ✅ ADD: Computed properties for genderPicker
+    private var iconColor: Color {
+        Color.secondary
+    }
+    
+    private var fieldBackgroundColor: Color {
+        colorScheme == .dark ? Color(.systemGray6).opacity(0.6) : Color(.systemGray6).opacity(0.5)
+    }
+    
+    private var fieldBorderColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08)
     }
 
     // MARK: - ViewBuilder Components
@@ -300,6 +321,78 @@ struct SignUpView: View {
         .onSubmit(performSignUp)
     }
     
+    // ✅ NEW: Gender picker
+    @ViewBuilder
+    private var genderPicker: some View {
+        Menu {
+            ForEach(Gender.allCases) { genderOption in
+                Button(genderOption.rawValue) {
+                    selectedGender = genderOption
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "person.2.circle.fill")
+                    .foregroundStyle(iconColor)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 20)
+                
+                Text(selectedGender.rawValue)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(fieldBackgroundColor)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(fieldBorderColor, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+    
+    // ✅ NEW: Optional DOB section
+    @ViewBuilder
+    private var dobSection: some View {
+        VStack(spacing: 12) {
+            Toggle(isOn: $provideDOB.animation(.spring(response: 0.4, dampingFraction: 0.8))) {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.plus")
+                        .foregroundStyle(.secondary)
+                        .font(.system(size: 14))
+                    Text("Provide Date of Birth (Optional)")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(SwitchToggleStyle(tint: .accentColor))
+            .padding(.horizontal, 4)
+            
+            if provideDOB {
+                DatePicker(
+                    "Birthday",
+                    selection: $dateOfBirth,
+                    in: ...Date.now,
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.compact)
+                .transition(.asymmetric(
+                    insertion: .scale.combined(with: .opacity),
+                    removal: .opacity
+                ))
+                .padding(.horizontal, 4)
+            }
+        }
+    }
+    
     private var rolePicker: some View {
         PremiumRolePicker(
             selectedRole: $selectedRole,
@@ -433,6 +526,11 @@ struct SignUpView: View {
                     }
                     
                     newUser.roleTitle = selectedRole.title
+                    // ✅ NEW: Save gender and DOB
+                    newUser.gender = selectedGender
+                    if provideDOB {
+                        newUser.dateOfBirth = dateOfBirth
+                    }
                     
                     try? authService.modelContext.save()
                 }

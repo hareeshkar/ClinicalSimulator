@@ -31,6 +31,8 @@
 		93E93B3B2EBD2FB000FD5B1B /* ProfileAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */; };
 		93E93B422EBF62DB00FD5B1B /* User.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B412EBF62D900FD5B1B /* User.swift */; };
 		93E93B4F2EBF636200FD5B1B /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B4E2EBF636000FD5B1B /* ContentView.swift */; };
+		93E93B5A2EC0BC6C00FD5B1B /* CaseBriefingViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B592EC0BC6000FD5B1B /* CaseBriefingViewModel.swift */; };
+		93E93B602EC0C5D500FD5B1B /* AnimatedAvatarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93E93B5F2EC0C5D200FD5B1B /* AnimatedAvatarView.swift */; };
 		93F959AF2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */; };
 		93F959B12E69967C00ABFEC2 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93F959B02E69967C00ABFEC2 /* DashboardView.swift */; };
 		93F959B52E69967D00ABFEC2 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 93F959B42E69967D00ABFEC2 /* Assets.xcassets */; };
@@ -81,6 +83,8 @@
 		93E93B3A2EBD2FAE00FD5B1B /* ProfileAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileAvatarView.swift; sourceTree = "<group>"; };
 		93E93B412EBF62D900FD5B1B /* User.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = User.swift; sourceTree = "<group>"; };
 		93E93B4E2EBF636000FD5B1B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		93E93B592EC0BC6000FD5B1B /* CaseBriefingViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseBriefingViewModel.swift; sourceTree = "<group>"; };
+		93E93B5F2EC0C5D200FD5B1B /* AnimatedAvatarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnimatedAvatarView.swift; sourceTree = "<group>"; };
 		93F959AB2E69967C00ABFEC2 /* ClinicalSimulator.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClinicalSimulator.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		93F959AE2E69967C00ABFEC2 /* ClinicalSimulatorApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClinicalSimulatorApp.swift; sourceTree = "<group>"; };
 		93F959B02E69967C00ABFEC2 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
@@ -215,6 +219,7 @@
 		93F959CB2E699B5800ABFEC2 /* ViewModels */ = {
 			isa = PBXGroup;
 			children = (
+				93E93B592EC0BC6000FD5B1B /* CaseBriefingViewModel.swift */,
 				93B3133C2E6B077F007FD59A /* NavigationManager.swift */,
 				935385A42E6ADC5600CD93C2 /* EvaluationViewModel.swift */,
 				9353859E2E6ADAC600CD93C2 /* NotesViewModel.swift */,
@@ -249,6 +254,7 @@
 			children = (
 				93E93B472EBF633200FD5B1B /* Auth */,
 				93B313512E6ED40A007FD59A /* DebriefView.swift */,
+				93E93B5F2EC0C5D200FD5B1B /* AnimatedAvatarView.swift */,
 				93B3134F2E6EABE3007FD59A /* DifferentialInputView.swift */,
 				93B3134A2E6C1628007FD59A /* CaseListItemView.swift */,
 				93B313462E6C1212007FD59A /* CaseCategoryListView.swift */,
@@ -376,6 +382,7 @@
 				93F959EC2E69A9CA00ABFEC2 /* GeminiService.swift in Sources */,
 				93B313332E6AFBB4007FD59A /* MainTabView.swift in Sources */,
 				93F959D42E699E5C00ABFEC2 /* PatientCase.swift in Sources */,
+				93E93B602EC0C5D500FD5B1B /* AnimatedAvatarView.swift in Sources */,
 				93B313432E6C0D31007FD59A /* CaseTemplateLibrary.swift in Sources */,
 				93F959E82E69A40800ABFEC2 /* SimulationView.swift in Sources */,
 				9353859B2E6AD02400CD93C2 /* SimulationViewModel.swift in Sources */,
@@ -392,6 +399,7 @@
 				93E93B422EBF62DB00FD5B1B /* User.swift in Sources */,
 				93F959D52E699E6100ABFEC2 /* StudentSession.swift in Sources */,
 				93B313472E6C1213007FD59A /* CaseCategoryListView.swift in Sources */,
+				93E93B5A2EC0BC6C00FD5B1B /* CaseBriefingViewModel.swift in Sources */,
 				93B3134E2E6C20F1007FD59A /* SpecialtyDetailsProvider.swift in Sources */,
 				93E93B4F2EBF636200FD5B1B /* ContentView.swift in Sources */,
 				9353859F2E6ADAC700CD93C2 /* NotesViewModel.swift in Sources */,
