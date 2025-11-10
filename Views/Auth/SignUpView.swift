@@ -21,6 +21,9 @@ struct SignUpView: View {
     @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -25, to: Date()) ?? Date()
     @State private var provideDOB = false
     
+    // ✅ NEW: State for native language selection
+    @State private var selectedNativeLanguage: NativeLanguage = .english
+    
     // View State
     @State private var errorMessage: String?
     @State private var isSigningUp = false
@@ -60,6 +63,8 @@ struct SignUpView: View {
                             // ✅ NEW: Add gender and DOB fields
                             genderPicker
                             dobSection
+                            // ✅ NEW: Add language picker
+                            languagePicker
                             rolePicker
                         }
                         // Shake animation on error
@@ -393,6 +398,44 @@ struct SignUpView: View {
         }
     }
     
+    // ✅ NEW: Language picker component
+    @ViewBuilder
+    private var languagePicker: some View {
+        Menu {
+            ForEach(NativeLanguage.allCases) { language in
+                Button(language.displayName) {
+                    selectedNativeLanguage = language
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+            }
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "globe")
+                    .foregroundStyle(iconColor)
+                    .font(.system(size: 16, weight: .medium))
+                    .frame(width: 20)
+                
+                Text(selectedNativeLanguage.displayName)
+                    .font(.callout)
+                    .foregroundStyle(.primary)
+                
+                Spacer()
+                
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(fieldBackgroundColor)
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(fieldBorderColor, lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+    
     private var rolePicker: some View {
         PremiumRolePicker(
             selectedRole: $selectedRole,
@@ -526,11 +569,12 @@ struct SignUpView: View {
                     }
                     
                     newUser.roleTitle = selectedRole.title
-                    // ✅ NEW: Save gender and DOB
                     newUser.gender = selectedGender
                     if provideDOB {
                         newUser.dateOfBirth = dateOfBirth
                     }
+                    // ✅ FIXED: Direct assignment, no optional
+                    newUser.nativeLanguage = selectedNativeLanguage
                     
                     try? authService.modelContext.save()
                 }

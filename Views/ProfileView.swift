@@ -16,6 +16,9 @@ struct ProfileView: View {
     @State private var editableDOB: Date = Date()
     @State private var hasDOB: Bool = false
     
+    // ✅ FIXED: Non-optional with default value
+    @State private var editableNativeLanguage: NativeLanguage = .english
+    
     // Alert States
     @State private var isShowingResetConfirmation = false
     @State private var isShowingReloadConfirmation = false
@@ -128,6 +131,12 @@ struct ProfileView: View {
                     .foregroundStyle(.secondary.opacity(0.6))
             }
         }
+        
+        // ✅ FIXED: No optional handling needed
+        SettingRowView(title: "Native Language", systemImage: "globe", color: .blue) {
+            Text(currentUser.nativeLanguage.displayName)
+                .foregroundStyle(.secondary)
+        }
     }
     
     // ✅ NEW: Extracted editable controls for clarity
@@ -155,6 +164,16 @@ struct ProfileView: View {
             .datePickerStyle(.graphical)
             .transition(.scale.combined(with: .opacity))
         }
+        
+        // ✅ NEW: Editable language picker (menu style so it works well inside a List)
+        Picker(selection: $editableNativeLanguage) {
+            ForEach(NativeLanguage.allCases, id: \.self) { language in
+                Text(language.displayName).tag(language)
+            }
+        } label: {
+            SettingRowView(title: "Native Language", systemImage: "globe", color: .blue)
+        }
+        .pickerStyle(.menu) // <<-- ensure tappable menu-style picker inside List
     }
     
     @ViewBuilder
@@ -257,6 +276,8 @@ struct ProfileView: View {
         editableUserName = currentUser.fullName
         editableRoleTitle = userRoleTitle
         editableGender = currentUser.gender ?? .preferNotToSay
+        // ✅ FIXED: No optional handling needed
+        editableNativeLanguage = currentUser.nativeLanguage
         if let dob = currentUser.dateOfBirth {
             editableDOB = dob
             hasDOB = true
@@ -271,6 +292,8 @@ struct ProfileView: View {
         userRoleTitle = editableRoleTitle
         currentUser.gender = editableGender
         currentUser.dateOfBirth = hasDOB ? editableDOB : nil
+        // ✅ FIXED: Direct assignment, no optional
+        currentUser.nativeLanguage = editableNativeLanguage
         try? modelContext.save()
     }
     

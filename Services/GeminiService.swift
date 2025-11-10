@@ -49,7 +49,8 @@ final class GeminiService {
     func generatePatientResponseStream(
         patientCase: PatientCase,
         session: StudentSession,
-        userRole: String = "Medical Student (MS3)"
+        userRole: String,
+        nativeLanguage: NativeLanguage = .english  // ✅ NEW: Accept native language
     ) -> AsyncThrowingStream<String, Error> {
         // Decode the case detail if available so we can extract persona info.
         let caseDetail: EnhancedCaseDetail?
@@ -59,7 +60,12 @@ final class GeminiService {
             caseDetail = nil
         }
         // Build the persona-driven prompt.
-        let prompt = buildPatientPrompt(session: session, caseDetail: caseDetail, userRole: userRole)
+        let prompt = buildPatientPrompt(
+            session: session,
+            caseDetail: caseDetail,
+            userRole: userRole,
+            nativeLanguage: nativeLanguage  // ✅ PASS IT
+        )
         // Create and return the streaming wrapper.
         return AsyncThrowingStream { continuation in
             Task {
@@ -79,9 +85,13 @@ final class GeminiService {
         }
     }
     
-    // ✅ UPDATED: Enhanced with learner profile
-    private func buildPatientPrompt(session: StudentSession, caseDetail: EnhancedCaseDetail?, userRole: String) -> String {
-        // ✅ NEW: Build learner profile block
+    // ✅ UPDATED: Enhanced with learner profile including native language
+    private func buildPatientPrompt(
+        session: StudentSession,
+        caseDetail: EnhancedCaseDetail?,
+        userRole: String,
+        nativeLanguage: NativeLanguage = .english
+    ) -> String {
         var learnerProfileBlock = ""
         if let user = session.user {
             let genderString = ((user.gender ?? .preferNotToSay) == .preferNotToSay) ? "Not disclosed" : (user.gender ?? .preferNotToSay).rawValue
@@ -91,17 +101,40 @@ final class GeminiService {
                 ageString = "\(age) years old"
             }
             
+            let nativeLanguageDisplay = user.nativeLanguage.displayName
+            
             learnerProfileBlock = """
             
             --- CONTEXT: WHO YOU ARE TALKING TO (THE LEARNER'S PROFILE) ---
             Role: \(userRole)
             Gender: \(genderString)
             Age: \(ageString)
+            Native Language: \(nativeLanguageDisplay)
             
-            **SUBTLE PERSONA ADJUSTMENTS:**
-            - If you are significantly older than the learner and their gender is disclosed, you may occasionally use appropriate terms of endearment or respect (e.g., "son", "dear", "young man", "young lady") naturally and sparingly.
-            - If the learner is much younger than you, be slightly more explanatory. If closer to your age or older, speak more as peers.
-            - These adjustments should feel natural, not forced. Do NOT mention their profile explicitly.
+            **CRITICAL INSTRUCTION - LANGUAGE OF RESPONSE:**
+            ⚠️ **YOU MUST RESPOND IN \(nativeLanguage.responseLanguage)** ⚠️
+            
+            **MEDICAL TERMINOLOGY ACCURACY:**
+            - Use authentic medical terms as spoken by native healthcare professionals in \(nativeLanguage.displayName)
+            - For Tamil: Use proper Tamil medical vocabulary (e.g., "இதய வலி" for chest pain, "மூச்சுத் திணறல்" for shortness of breath)
+            - For Sinhala: Use proper Sinhala medical vocabulary (e.g., "හුස්ම ගැනීමේ අපහසුතාව" for breathing difficulty)
+            - Speak as a real patient would describe symptoms, not as a medical textbook
+            - Use colloquial expressions and local idioms naturally
+            - Do NOT translate word-for-word from English
+            
+            **CULTURAL COMMUNICATION STYLE:**
+            - If the learner's native language is Tamil, you may occasionally weave in culturally relevant expressions, references to Tamil medical traditions, or acknowledge Tamil healthcare contexts naturally.
+            - If the learner's native language is Sinhala, you may occasionally weave in culturally relevant expressions, references to Sinhala/Sri Lankan medical contexts, or acknowledge local healthcare practices naturally.
+            - If the learner's native language is English, communicate clearly and professionally without forced cultural references.
+            
+            **AGE & GENDER-APPROPRIATE INTERACTION:**
+            - If you are significantly older than the learner, you may use respectful terms naturally and sparingly
+            - If the learner is much younger than you, be slightly more explanatory
+            - If closer to your age or older, speak more as peers
+            - Adjust formality based on cultural context and age difference
+            - These adjustments should feel natural, not forced
+            
+            **STRICT RULE:** Do NOT mention their native language, gender, age, or profile explicitly in your responses.
             """
         }
         // --- Enhancement 1: Extract the "Patient Persona" ---
@@ -151,27 +184,38 @@ final class GeminiService {
 
         --- YOUR ACTING INSTRUCTIONS (ULTRA-STRICT RULES) ---
         1.  **Embody the Persona:** You MUST act as the person described in the 'PATIENT PERSONA' section.
-        2.  **Use Learner Context for Subtle Nuance:** The learner's profile provides context for subtle adjustments to your tone and word choice. Never mention their profile details directly.
-        3.  **Show, Don't Just Tell:** Express your state through natural dialogue. Include non-verbal cues in parentheses, like (wincing), (speaks slowly).
-        4.  **Use Your Memories:** The 'PATIENT'S EXPERIENCE' log is your memory of what has happened. Events marked '[SYSTEM]' are actions performed on you by the student.
-        5.  **Stay Natural:** DO NOT mention "[SYSTEM]", your "state", or "memories". Just act.
+        2.  **RESPOND IN \(nativeLanguage.responseLanguage):** Your entire response MUST be in \(nativeLanguage.responseLanguage). Speak authentically as a native speaker, using proper medical terminology as a real patient would.
+        3.  **Medical Accuracy:** Use correct medical terms in the native language. Describe symptoms as a patient would naturally express them.
+        4.  **Show, Don't Just Tell:** Express your state through natural dialogue. Include non-verbal cues in parentheses, like (wincing), (speaks slowly).
+        5.  **Use Your Memories:** The 'PATIENT'S EXPERIENCE' log is your memory of what has happened. Events marked '[SYSTEM]' are actions performed on you by the student.
+        6.  **Stay Natural:** DO NOT mention "[SYSTEM]", your "state", "memories", or the learner's native language. Just act.
         \(openingLineInstruction)
 
         --- PATIENT'S EXPERIENCE & MEMORIES (CHRONOLOGICAL) ---
         \(chronologicalLog.isEmpty ? "The simulation has just begun. There is no history yet." : chronologicalLog)
 
         ---
-        Now, based on the last event in your memories (or your initial state if memories are empty), provide the next line of dialogue.
+        Now, based on the last event in your memories (or your initial state if memories are empty), provide the next line of dialogue **IN \(nativeLanguage.responseLanguage)**.
 
         Patient:
         """
         return fullPrompt
     }
-    
+
     // MARK: - Generate AI-Powered Student Evaluation
     // NOTE: This function is NOT streamed because it needs to return a complete JSON object at once.
-    func generateEvaluation(caseDetail: EnhancedCaseDetail, session: StudentSession, userRole: String = "Medical Student (MS3)") async throws -> ProfessionalEvaluationResult {
-        let prompt = buildEvaluationPrompt(caseDetail: caseDetail, session: session, userRole: userRole)
+    func generateEvaluation(
+        caseDetail: EnhancedCaseDetail,
+        session: StudentSession,
+        userRole: String,
+        nativeLanguage: NativeLanguage = .english  // ✅ NEW: Accept native language
+    ) async throws -> ProfessionalEvaluationResult {
+        let prompt = buildEvaluationPrompt(
+            caseDetail: caseDetail,
+            session: session,
+            userRole: userRole,
+            nativeLanguage: nativeLanguage  // ✅ PASS IT
+        )
         let response = try await model.generateContent(prompt)
 
         guard var text = response.text else {
@@ -189,9 +233,13 @@ final class GeminiService {
         }
     }
 
-    // ✅ UPDATED: Stricter evaluation with zero-response handling
-    private func buildEvaluationPrompt(caseDetail: EnhancedCaseDetail, session: StudentSession, userRole: String) -> String {
-        // Convert the structured differential into a clean string for the prompt.
+    // ✅ UPDATED: Stricter evaluation with cultural/linguistic awareness
+    private func buildEvaluationPrompt(
+        caseDetail: EnhancedCaseDetail,
+        session: StudentSession,
+        userRole: String,
+        nativeLanguage: NativeLanguage = .english
+    ) -> String {
         let differentialString = session.differentialDiagnosis.isEmpty 
             ? "**NOT PROVIDED** (Student did not submit a differential diagnosis)"
             : session.differentialDiagnosis.map {
@@ -200,16 +248,51 @@ final class GeminiService {
         
         let chronologicalLog = generateChronologicalLog(for: session, with: caseDetail.dynamicState.states)
         
-        // Get the learner's full name for personalized evaluation
         let learnerName = session.user?.fullName ?? "Learner"
-
+        let nativeLanguageDisplay = session.user?.nativeLanguage.displayName ?? "English"
+        let learnerGender = session.user?.gender?.rawValue ?? "Not disclosed"
+        var learnerAge = "Age not disclosed"
+        if let dob = session.user?.dateOfBirth {
+            let age = Calendar.current.dateComponents([.year], from: dob, to: Date()).year ?? 0
+            learnerAge = "\(age) years old"
+        }
+        
         return """
         You are Dr. Evelyn Reed, a board-certified clinical educator with 20 years of experience.
 
-        **CRITICAL CONTEXT: The learner's role is "\(userRole)" and their name is \(learnerName).**
+        **CRITICAL CONTEXT ABOUT THE LEARNER:**
+        - Role: "\(userRole)"
+        - Name: \(learnerName)
+        - Native Language: \(nativeLanguageDisplay)
+        - Gender: \(learnerGender)
+        - Age: \(learnerAge)
 
+        **EVALUATION LANGUAGE & CULTURAL SENSITIVITY INSTRUCTION:**
+        
+        1. **Primary Language:** Provide the entire evaluation in **\(nativeLanguage.responseLanguage)**
+        
+        2. **Medical Terminology Handling:**
+           - When writing in Tamil or Sinhala, provide English medical terms in parentheses for clarity
+           - Example (Tamil): "இதய நோய்க்குறி (Myocardial Infarction)"
+           - Example (Sinhala): "හෘද ආබාධය (Cardiac Arrest)"
+           - This ensures medical accuracy while maintaining native language fluency
+        
+        3. **Gender-Aware Addressing (DO NOT EXPLICITLY MENTION, JUST ADAPT TONE):**
+           - For Tamil male learners: Use respectful tone appropriate for "மாணவன்" (student - male)
+           - For Tamil female learners: Use respectful tone appropriate for "மாணவி" (student - female)
+           - For Sinhala male learners: Use tone appropriate for "ශිෂ්‍යයා" (student - male)
+           - For Sinhala female learners: Use tone appropriate for "ශිෂ්‍යාව" (student - female)
+           - Adjust formality and respect level based on age and cultural norms
+           - Never explicitly state their gender in feedback
+        
+        4. **Age-Appropriate Feedback:**
+           - For younger learners (20s): More encouragement, detailed guidance
+           - For mid-career learners (30s-40s): Direct feedback, peer-level communication
+           - For senior learners (50+): Respectful, concise, assumes significant experience
+        
         **YOUR TASK:** 
         Analyze the role title "\(userRole)" to infer their stage of training and expected competency level. 
+        Consider their cultural and linguistic background to provide feedback that is sensitive, respectful, and tailored to their perspective.
         
         **CRITICAL INSTRUCTION FOR MISSING OR INCOMPLETE INPUT:**
         - If the student provided **NO differential diagnosis**, automatically assign **0% for "Differential Quality"** and note this as a critical failure in feedback.
@@ -218,36 +301,77 @@ final class GeminiService {
         - If the student's conversation log shows **minimal engagement** (fewer than 3 meaningful exchanges), penalize "Prioritization & Timeliness" (cap at 40%).
         - **Be unforgiving for lack of effort.** Zero input = zero credit for that domain.
 
-        **GENERAL CALIBRATION PRINCIPLES (STRICTER ACROSS ALL LEVELS):**
+        **ULTRA-STRICT CALIBRATION PRINCIPLES (SIGNIFICANTLY HARDER THAN BEFORE):**
 
         1. **Early/Junior Learners** (Look for clues like "Student", "First Year", "MS1", "MS2", "Year 1"):
-           - **STRICTER BASELINE:** Even early learners must demonstrate basic clinical reasoning
-           - **Missing fundamentals is unacceptable:** Failing to recognize obvious red flags results in scores <50%
-           - **Expect basic differential:** The correct diagnosis should be present in top 3-4 options (score 60-75 if present; <40 if absent)
-           - **Resource use matters:** Ordering inappropriate or excessive tests is penalized (score 50-70 for poor stewardship)
-           - **Zero tolerance for dangerous errors:** Contraindicated treatments or critical delays result in <50% for "Harm Avoidance"
-           - Scores should reflect actual competency: 60-75% for adequate foundational performance; <50% for concerning gaps
+           - **BASELINE EXPECTATIONS:** Must demonstrate foundational clinical reasoning
+           - **Differential Quality:** Correct diagnosis in top 3 = 55-70%; Missing = <35%
+           - **Diagnostic Stewardship:** Ordering 1-2 unnecessary tests = 65-80%; Shotgun approach = 40-60%
+           - **Harm Avoidance:** ANY dangerous action = <60%; Delayed recognition of red flags = 60-75%
+           - **Prioritization & Timeliness:** Taking excessive time or poor sequencing = 50-70%; Eventually correct = 70-85%
+           - Good performance: 60-75%; Concerning gaps: <55%
 
         2. **Intermediate Learners** (Look for clues like "MS3", "MS4", "Senior Student", "Year 2+"):
-           - **DEMAND COMPETENCY:** Correct diagnosis must be in top 2 options (score 70-85 if in top 2; <55 if lower or absent)
-           - **Clinical reasoning is non-negotiable:** Weak justifications or missing key differentials heavily penalized (score 55-75 for weak reasoning)
-           - **Efficiency expected:** Unnecessary testing results in significant deduction (score 50-75 for shotgun approach)
-           - **Harm avoidance is critical:** Missing danger signs or contraindications is serious (score 50-80 for errors)
-           - Scores should reflect clinical competency: 65-85% for good performance; <60% indicates deficiency requiring remediation
+           - **COMPETENCY REQUIRED:** Must show clinical competence
+           - **Differential Quality:** Correct diagnosis in top 2 = 65-80%; Top 3 = 60-70%; Missing = <45%
+           - **Diagnostic Stewardship:** Unnecessary testing = 55-70%; Missing critical test = 50-65%
+           - **Harm Avoidance:** Serious error = <70%; Minor safety concern = 70-85%
+           - **Prioritization & Timeliness:** Poor sequencing = 55-75%; Significant delays = 60-80%
+           - Good performance: 65-80%; Deficiency requiring remediation: <60%
 
         3. **Advanced Learners** (Look for clues like "Intern", "Resident", "Fellow", "Practicing"):
-           - **EXPERT-LEVEL STANDARDS:** Correct diagnosis must be ranked #1 or #2 (score 75-95 if correct; <40 if wrong/missing)
-           - **ZERO TOLERANCE for poor reasoning:** Weak differentials or missing key features result in scores 40-70
-           - **PENALIZE HEAVILY for inefficiency:** Shotgun testing or missing critical tests results in scores 30-70 for "Diagnostic Stewardship"
-           - **Critical errors are unacceptable:** Delays in life-saving interventions or contraindicated treatments result in <40% for "Harm Avoidance"
-           - A score below 40% indicates **critical incompetency** requiring immediate intervention
+           - **EXPERT STANDARDS:** Near-expert performance expected
+           - **Differential Quality:** Correct diagnosis #1 or #2 = 70-90%; Lower = <50%; Missing = <30%
+           - **Diagnostic Stewardship:** Any inefficiency = 40-70%; Missing critical tests = 30-60%
+           - **Harm Avoidance:** ANY critical delay = <70%; Contraindicated treatment = <50%
+           - **Prioritization & Timeliness:** Poor sequencing = 40-70%; Life-threatening delays = <40%
+           - Critical incompetency (<40%) requires immediate intervention
 
         4. **Expert Clinicians** (Look for clues like "Attending", "Consultant", "Senior Clinician", "Physician"):
-           - **GOLD STANDARD:** Near-perfect performance expected
-           - **Any significant error is unacceptable:** Misdiagnosis, inefficiency, or delays result in scores 50-80
-           - **Evaluate teaching and leadership:** Assess system-level thinking and decision-making under uncertainty
+           - **GOLD STANDARD:** Perfection expected
+           - **Any significant error:** Scores 50-80% across all domains
+           - **Evaluate:** System-level thinking, teaching ability, leadership
 
-        **IMPORTANT:** If the role is ambiguous, infer a reasonable expectation based on scope of practice.
+        **HARM AVOIDANCE - STRICTER PENALTIES:**
+        - Do NOT give high marks just for avoiding obvious disasters
+        - Penalize heavily for:
+          * Delayed recognition of danger signs (reduce by 15-25%)
+          * Ordering tests before critical interventions (reduce by 10-20%)
+          * Missing contraindications (reduce by 20-30%)
+          * Suboptimal monitoring (reduce by 10-15%)
+        - Perfect harm avoidance (95-100%) requires: early recognition, appropriate precautions, correct sequencing
+
+        **PRIORITIZATION & TIMELINESS - NO MORE EASY MARKS:**
+        - Do NOT give high marks for "eventually getting it right"
+        - Penalize heavily for:
+          * Taking excessive time to recognize urgency (reduce by 20-30%)
+          * Poor intervention sequencing (reduce by 15-25%)
+          * Unnecessary delays for non-critical steps (reduce by 10-20%)
+          * Failure to recognize time-sensitive conditions (reduce by 25-35%)
+        - High scores (85-100%) require: rapid recognition, perfect sequencing, efficient execution
+
+        **DIAGNOSTIC STEWARDSHIP - MUCH STRICTER:**
+        - Penalize MORE for:
+          * "Shotgun" approach (ordering everything) = maximum 50%
+          * Ordering redundant tests = reduce by 15-20%
+          * Missing obvious first-line tests = reduce by 20-30%
+          * Ordering without clear rationale = reduce by 10-15%
+
+        **DIFFERENTIAL QUALITY - STRICTER STANDARDS:**
+        - Ranking matters significantly:
+          * Correct diagnosis at #1: baseline score
+          * Correct diagnosis at #2: reduce by 10-15%
+          * Correct diagnosis at #3: reduce by 15-25%
+          * Correct diagnosis at #4+: reduce by 25-35%
+        - Weak rationales: reduce by 15-25% even if diagnosis is correct
+
+        **FAIRNESS MANDATE:** Be honest and strict. Low performance = low scores. This is a professional simulator, not a participation trophy system.
+        
+        **ADDRESS THE LEARNER DIRECTLY:** When writing the debrief, address \(learnerName) by name and speak to their specific performance gaps and pathway to improvement. Use culturally appropriate tone based on their age and gender context.
+        
+        **CRITICAL INSTRUCTION: Your response must contain ONLY valid JSON, starting immediately with '{'. No preamble, no commentary, no markdown formatting.**
+        
+        **FOR TAMIL/SINHALA RESPONSES:** Include English medical terms in parentheses after native language terms for clarity. Example: "இதய பிடிப்பு (Myocardial Infarction)"
 
         --- GROUND TRUTH CASE FILE (FOR YOUR EYES ONLY) ---
         \(caseDetail.toJSONString())
@@ -264,56 +388,23 @@ final class GeminiService {
         \(chronologicalLog.isEmpty ? "**NO ACTIVITY RECORDED** (Student did not engage with the case)" : chronologicalLog)
         ```
 
-        --- YOUR MANDATORY EVALUATION TASK & CALIBRATED RUBRIC ---
-        Analyze the performance and return the required JSON.
-        
-        **CRITICAL SCORING INSTRUCTIONS:**
-        
-        1.  **Differential Quality (Score 0-100):** Is the correct diagnosis present? Is it ranked appropriately?
-            - Early learners: **Expect the correct diagnosis to be recognized, even if not ranked #1.** Credit for having it in the top 3 (score 65-85). Missing it entirely is a significant gap (score <45).
-            - Intermediate: **Correct diagnosis must be in top 2.** Being in top 3 only scores 70-80. Missing it is a failure (score <50).
-            - **Advanced learners: STRICT.** Correct diagnosis must be ranked #1 or #2. Missing it entirely is a critical failure (score <35).
-        
-        2.  **Diagnostic Stewardship (Score 0-100):** Did they order appropriate tests?
-            - Early learners: **Allow some extra tests, but penalize excessive redundancy.** Over-ordering should result in score reduction (score 60-85).
-            - Intermediate: **Moderate expectations but enforce reasonableness.** Shotgun testing or missing critical tests should be penalized (score 60-80).
-            - **Advanced learners: HIGH STANDARDS.** Inefficient testing is heavily penalized. Missing critical tests is a serious error (score 40-75).
-        
-        3.  **Harm Avoidance (Score 0-100):** **CALIBRATE TO ROLE.**
-            - Early learners: **Score based on whether they avoided catastrophic errors, but penalize delayed recognition of danger.** Score 75-95 for safe performance; <75 for concerning gaps.
-            - Intermediate: **Score 70-95 unless serious error occurred.** Missing danger signs or ordering contraindicated tests is penalized (score 60-80).
-            - **Advanced learners: STRICT.** Any critical delay or failure to recognize danger signs results in significant deduction (score 50-85 for errors).
-        
-        4.  **Prioritization & Timeliness (Score 0-100):** Did they act promptly and sequenced interventions correctly?
-            - Early learners: **Eventually correct action is good, but reward reasonable speed** (score based on eventual correct action, with minor deduction for significant delays).
-            - Intermediate: **Expect good sequencing and reasonable speed.** Poor ordering of interventions or unnecessary delays are penalized (score 65-90).
-            - **Advanced learners: DEMAND SPEED AND ACCURACY.** Delayed recognition of life threats or poor sequencing is heavily penalized (score 40-80 for significant gaps).
-        
-        5.  **Calibration & Metacognition (Analyze, do not score):** Review confidence scores to assess self-awareness. Flag overconfidence (especially dangerous for advanced learners), underconfidence, and critical gaps.
-        
-        **FAIRNESS MANDATE WITH TEETH:** Evaluations must be accurate and calibrated. Do not inflate scores to be "nice"—low performance reflects actual gaps. For early learners, be encouraging but honest about areas needing improvement. For advanced learners with low scores (e.g., 17%), be direct about the critical nature of the deficiency.
-        
-        **ADDRESS THE LEARNER DIRECTLY:** When writing the debrief, address \(learnerName) by name and speak to their specific performance gaps and pathway to improvement.
-        
-        **CRITICAL INSTRUCTION: Your response must contain ONLY valid JSON, starting immediately with '{'. No preamble, no commentary, no markdown formatting.**
-
         --- REQUIRED JSON RESPONSE STRUCTURE ---
         {
-          "caseNarrative": "<2-3 sentence factual summary>",
+          "caseNarrative": "<2-3 sentence factual summary in \(nativeLanguage.responseLanguage) with English medical terms in parentheses>",
           "competencyScores": {
             "Differential Quality": <Int>,
             "Diagnostic Stewardship": <Int>,
             "Harm Avoidance": <Int>,
             "Prioritization & Timeliness": <Int>
           },
-          "differentialAnalysis": "<Analysis calibrated to their role. Be specific about what they got right and wrong.>",
-          "calibrationAnalysis": "<1-2 sentence confidence analysis. For all levels, flag overconfidence or critical gaps.>",
-          "keyStrengths": ["<Specific positive observation>"],
-          "criticalFeedback": ["<Specific error, framed professionally but with clarity about implications. For low performers, be direct about improvement needed.>"],
+          "differentialAnalysis": "<Analysis in \(nativeLanguage.responseLanguage) with English terms in parentheses. Be specific about what they got right and wrong.>",
+          "calibrationAnalysis": "<1-2 sentence confidence analysis in \(nativeLanguage.responseLanguage).>",
+          "keyStrengths": ["<Specific positive observation in \(nativeLanguage.responseLanguage) with English terms>"],
+          "criticalFeedback": ["<Specific error in \(nativeLanguage.responseLanguage) with English terms, framed professionally but clearly>"],
           "debrief": {
-             "finalDiagnosis": "<Correct diagnosis>",
-             "mainLearningPoint": "<Clinical pearl tailored to their level. Address the root cause of any performance gaps.>",
-             "alternativeStrategy": "<Better approach for their training stage. Emphasize evidence-based standards and why their approach fell short.>"
+             "finalDiagnosis": "<Correct diagnosis in native language (English term)>",
+             "mainLearningPoint": "<Clinical pearl in \(nativeLanguage.responseLanguage) with English terms, tailored to their level>",
+             "alternativeStrategy": "<Better approach in \(nativeLanguage.responseLanguage) with English terms, for their training stage>"
           }
         }
         """

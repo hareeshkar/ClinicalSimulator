@@ -12,6 +12,36 @@ enum Gender: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+// ✅ NEW: Native language options for cultural immersion
+enum NativeLanguage: String, Codable, CaseIterable, Identifiable {
+    case english = "English"
+    case tamil = "Tamil"
+    case sinhala = "Sinhala"
+    
+    var id: String { rawValue }
+    
+    /// Localized display name for the language
+    var displayName: String {
+        switch self {
+        case .english: return "English"
+        case .tamil: return "Tamil (தமிழ்)"
+        case .sinhala: return "Sinhala (සිංහල)"
+        }
+    }
+    
+    /// ✅ NEW: Language instruction for Gemini AI
+    var responseLanguage: String {
+        switch self {
+        case .english:
+            return "English"
+        case .tamil:
+            return "Tamil (தமிழ்) - Respond in authentic Tamil as a native Tamil speaker would, using natural colloquialisms and expressions"
+        case .sinhala:
+            return "Sinhala (සිංහල) - Respond in authentic Sinhala as a native Sinhala speaker would, using natural colloquialisms and expressions"
+        }
+    }
+}
+
 @Model
 class User {
     // This is a unique, stable ID provided by SwiftData. Great for relationships.
@@ -42,6 +72,19 @@ class User {
     var gender: Gender? // Made optional to fix SwiftData casting issues
     var dateOfBirth: Date? // Optional for privacy
     
+    // ✅ MIGRATION FIX: Store as raw value to handle existing nil values
+    private var nativeLanguageRawValue: String = NativeLanguage.english.rawValue
+    
+    // ✅ Computed property that never returns nil
+    var nativeLanguage: NativeLanguage {
+        get {
+            NativeLanguage(rawValue: nativeLanguageRawValue) ?? .english
+        }
+        set {
+            nativeLanguageRawValue = newValue.rawValue
+        }
+    }
+    
     // ✅ UPDATE the initializer
     init(fullName: String, email: String, password: String) {
         self.fullName = fullName
@@ -53,6 +96,8 @@ class User {
         // ✅ NEW: Initialize new properties
         self.gender = .preferNotToSay
         self.dateOfBirth = nil
+        // ✅ FIXED: Direct assignment without type annotation
+        self.nativeLanguageRawValue = NativeLanguage.english.rawValue
     }
     
     /// Verifies if the provided password matches the user's stored hashed password.

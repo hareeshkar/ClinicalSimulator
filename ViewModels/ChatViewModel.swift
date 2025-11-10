@@ -56,11 +56,12 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
             var patientMessage: ConversationMessage?
             
             do {
-                // 3. Get the stream from the Gemini service.
+                // ✅ UPDATED: Pass native language to the stream
                 let responseStream = geminiService.generatePatientResponseStream(
                     patientCase: patientCase,
                     session: session,
-                    userRole: userRole
+                    userRole: userRole,
+                    nativeLanguage: session.user?.nativeLanguage ?? .english
                 )
                 
                 // 4. Loop through the stream to get text chunks.
@@ -113,12 +114,11 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
             defer { isLoading = false }
 
             do {
-                // Use the exact same service call as a normal message.
-                // The prompt will include the latest [System Event] that triggered this call.
                 let responseStream = geminiService.generatePatientResponseStream(
                     patientCase: patientCase,
                     session: session,
-                    userRole: userRole
+                    userRole: userRole,
+                    nativeLanguage: session.user?.nativeLanguage ?? .english
                 )
 
                 for try await chunk in responseStream {

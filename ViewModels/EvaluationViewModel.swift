@@ -69,11 +69,12 @@ class EvaluationViewModel: ObservableObject, Hashable {
         }
         
         do {
-            // ✅ Use the stored userRole
+            // ✅ UPDATED: Pass native language for native-language feedback
             let result = try await geminiService.generateEvaluation(
                 caseDetail: caseDetail,
                 session: session,
-                userRole: userRole
+                userRole: userRole,
+                nativeLanguage: session.user?.nativeLanguage ?? .english  // ✅ PASS LANGUAGE
             )
             
             // ✅ SAVES THE NEW RESULT
