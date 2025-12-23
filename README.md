@@ -22,11 +22,14 @@
 
 ### 🎯 Key Highlights
 
-- **Adaptive AI Patients**: Realistic patient interactions powered by Google's Gemini 2.5 Flash
+- **Adaptive AI Patients**: Realistic patient interactions powered by Google's Gemini 2.5 Flash with streaming responses
+- **Multi-Language Support**: Full simulation experience in English, Tamil (தமிழ்), and Sinhala (සිංහල) with culturally authentic medical terminology
 - **Role-Based Learning**: Personalized difficulty and feedback based on learner level (MS1-MS4, Intern, Resident, Fellow, Attending, Consultant, EMT, Pharmacist, Nurse, PA Student, NP Student, Physiotherapy Student, Nursing Student, Respiratory Therapist)
-- **Comprehensive Simulation**: Dynamic vital signs, diagnostic workups, and treatment responses
-- **Intelligent Evaluation**: AI-driven performance assessment with detailed competency scoring
-- **Rich Case Library**: Pre-built cases across multiple specialties with varying difficulty levels
+- **Comprehensive Simulation**: Dynamic vital signs with physics-based drift, diagnostic workups, and treatment responses
+- **Intelligent Evaluation**: AI-driven performance assessment with detailed competency scoring and age-appropriate feedback
+- **Rich Case Library**: Pre-built cases across 12+ medical specialties with varying difficulty levels
+- **Secure Authentication**: Email-based user accounts with password hashing and profile customization
+- **Immersive UI/UX**: Haptic feedback, smooth animations, and specialty-themed visual design
 
 ---
 
@@ -62,6 +65,34 @@
 - **Clinical State Jitter**: Subtle vital sign changes reflecting patient condition
 - **Dynamic Response Modeling**: Vital signs react authentically to interventions and time
 - **Physiological Accuracy**: Evidence-based vital sign ranges and transitions
+- **Animated Transitions**: Smooth numeric content transitions with visual feedback
+- **Real-Time Monitoring**: Continuous vital sign updates during active simulations
+
+### 🌍 Multi-Language Clinical Education
+
+- **Native Language Support**: Choose between English, Tamil (தமிழ்), or Sinhala (සිංහල)
+- **Culturally Authentic Medical Terminology**: AI uses proper medical vocabulary as spoken by native healthcare professionals
+- **Localized Patient Interactions**: Patients respond in the learner's native language with appropriate colloquialisms
+- **Language-Aware Feedback**: Evaluations and hints delivered in selected language while preserving medical terminology
+- **Cultural Context Integration**: AI may weave culturally relevant expressions and healthcare contexts naturally into conversations
+
+### 👤 User Profiles & Authentication
+
+- **Secure Email-Based Authentication**: Create accounts with email and password (SHA-256 hashed)
+- **Persistent Sessions**: Automatic login with secure credential storage
+- **Comprehensive Profiles**: Customize full name, role/title, gender (Male, Female, Non-Binary, Prefer Not to Say), date of birth, and native language
+- **Profile Images**: Upload and crop custom profile pictures with real-time sync across views
+- **Birthday Celebrations**: Animated rainbow avatar border on your special day
+- **Privacy First**: All data stored locally with SwiftData
+
+### 🎨 Polished UI/UX Experience
+
+- **Haptic Feedback**: Tactile responses for button presses, successful actions, and hint delivery
+- **Smooth Animations**: Spring-based transitions, fade effects, and scale animations throughout the app
+- **Specialty-Themed Colors**: Each medical specialty has distinctive color coding (Cardiology: pink, Emergency: red, Neurology: blue, etc.)
+- **Adaptive Theming**: Support for light and dark modes with material backgrounds
+- **Animated Statistics**: Number counters, progress bars, and score displays with smooth transitions
+- **Professional Typography**: Clear hierarchy with SF Symbols integration
 
 ### 🎓 Educational Features
 
@@ -82,17 +113,34 @@
 
 ### 🗂️ Case Management
 
-- **Case Library**: Browse 20+ clinical scenarios across specialties
-- **Smart Recommendations**: AI-curated cases based on your training level
-- **Difficulty Filters**: Beginner, Intermediate, and Advanced cases
-- **Specialty Categories**: Emergency Medicine, Cardiology, Internal Medicine, Pediatrics, Neurology, Psychiatry, Pulmonology, Orthopedics, Infectious Disease, Endocrinology, Surgery, Obstetrics/Gynecology
+- **Extensive Case Library**: Browse 20+ clinical scenarios across 12+ medical specialties
+- **Smart Recommendations**: AI-curated cases based on your training level and role
+- **Difficulty Filters**: Beginner, Intermediate, and Advanced cases with clear indicators
+- **Specialty Categories**: 
+  - 🚨 **Emergency Medicine**: Acute presentations requiring rapid diagnosis
+  - ❤️ **Cardiology**: Cardiovascular emergencies and chronic conditions
+  - 🫁 **Pulmonology**: Respiratory pathology and critical care
+  - 🧠 **Neurology**: Neurological emergencies and chronic diseases
+  - 🩺 **Internal Medicine**: Complex multi-system presentations
+  - 👶 **Pediatrics**: Pediatric-specific cases across age groups
+  - 🦴 **Orthopedics**: Musculoskeletal injuries and conditions
+  - 🦠 **Infectious Disease**: Infectious processes and antimicrobial stewardship
+  - 🫀 **Endocrinology**: Hormonal and metabolic disorders
+  - 🔪 **Surgery**: Surgical emergencies and perioperative care
+  - 👩‍⚕️ **Obstetrics/Gynecology**: OB/GYN presentations and emergencies
+  - 🧠 **Psychiatry**: Psychiatric emergencies and mental health crises
+  - 🍽️ **Gastroenterology**: Digestive system disorders
+  - 💧 **Nephrology**: Renal and electrolyte disorders
+- **Specialty-Specific Theming**: Each specialty has unique colors, icons, and descriptions
 
 ### 💾 Robust Data Persistence
 
 - **ScenePhase Monitoring**: Automatic session saving when app backgrounds or terminates
 - **Crash Recovery**: Session state preservation prevents data loss
-- **SwiftData Integration**: Efficient local database with automatic migrations
+- **SwiftData Integration**: Efficient local database with automatic migrations and relationships
 - **Real-Time Sync**: Continuous session updates during active simulations
+- **User-Scoped Data**: All sessions and progress linked to individual user accounts
+- **Profile Image Storage**: Local file system storage with UUID-based filenames
 
 ---
 
@@ -138,6 +186,7 @@
 #### 🔹 Services
 
 - **`GeminiService`**:
+
   - **Clinical Priority Sliding Window**: Maintains 100-message context window for optimal AI performance
   - Streaming patient response generation
   - Professional evaluation with rubric-based scoring
@@ -188,8 +237,9 @@
 
 - **macOS**: 14.0 (Sonoma) or later
 - **Xcode**: 15.0 or later
-- **iOS Device/Simulator**: iOS 17.0+
-- **Firebase Account**: For AI and Analytics services
+- **iOS Device/Simulator**: iOS 17.0+ (optimized for iPhone)
+- **Firebase Account**: For Gemini AI integration
+- **Google AI API Key**: Required for AI-powered simulations
 
 ### Installation
 
@@ -236,10 +286,19 @@
 
 On first launch, the app will:
 
-1. Initialize Firebase
-2. Load sample cases from `SampleCases.json`
-3. Create SwiftData database
-4. Display the personalized dashboard
+1. Initialize Firebase and Gemini AI
+2. Display the Sign Up screen
+3. Create your secure user account
+4. Load sample cases from `SampleCases.json`
+5. Initialize SwiftData database with user profile
+6. Display the personalized dashboard
+
+### Creating Your Account
+
+1. **Sign Up**: Enter your full name, email, and password
+2. **Customize Profile**: Set your role (e.g., "Medical Student (MS3)"), gender, date of birth, and native language
+3. **Upload Avatar** (Optional): Add a profile picture with built-in cropping
+4. **Start Learning**: Browse recommended cases or explore the case library
 
 ---
 
@@ -257,11 +316,14 @@ On first launch, the app will:
 #### 💬 Conversation Tab
 
 - Type messages to interact with the AI patient
-- Watch for streaming responses that appear word-by-word
-- Patient responses adapt to their current clinical state
-- **Access AI Preceptor**: Tap the floating "Hint" button for real-time attending physician guidance
+- Watch for **streaming responses** that appear word-by-word in real-time
+- Patient responses adapt to their current clinical state and your native language
+- **Multi-Language Conversations**: Patients communicate in English, Tamil, or Sinhala based on your profile settings
+- **Access AI Preceptor**: Tap the floating "Hint" button (bottom-right) for real-time attending physician guidance
 - **Progressive Hints**: Receive Socratic questions and clinical insights tailored to your progress
 - **Alternative Perspectives**: Use "Get Another Hint" for different approaches to the same challenge
+- **Haptic Feedback**: Feel tactile responses when sending messages and receiving hints
+- **Smooth Animations**: Message bubbles appear with scale and fade transitions
 
 #### 🔬 Diagnostics Tab
 
@@ -281,10 +343,12 @@ On first launch, the app will:
 
 #### 💓 Patient Monitor
 
-- Swipe down from top to view vital signs
-- Vitals update dynamically based on patient state
+- Swipe down from top to view vital signs in real-time
+- Vitals update dynamically based on patient state and interventions
 - **Living Patient Physics**: Observe realistic vital sign drift and natural physiological variation
-- Animated transitions show clinical changes
+- **Animated Numeric Transitions**: Numbers smoothly morph using SwiftUI's contentTransition API
+- **Color-Coded Values**: Critical values highlighted in red, normal in green
+- **Specialty Theming**: Monitor styling adapts to case specialty colors
 
 ### Ending Simulation
 
@@ -292,6 +356,55 @@ On first launch, the app will:
 2. Review your differential diagnosis
 3. Receive AI-generated evaluation
 4. Study the debrief with teaching points
+
+---
+
+## 🌐 Multi-Language Clinical Education
+
+Clinical Simulator offers a truly immersive multi-language experience, allowing learners to practice medicine in their native language with culturally authentic medical terminology.
+
+### Supported Languages
+
+- **English**: Standard medical English with international terminology
+- **Tamil (தமிழ்)**: Full Tamil support with proper medical vocabulary
+- **Sinhala (සිංහල)**: Complete Sinhala integration with native healthcare terminology
+
+### Language Features
+
+#### **Native Medical Terminology**
+The AI uses authentic medical terms as spoken by native healthcare professionals:
+
+- **Tamil**: Uses proper Tamil medical vocabulary (e.g., "இதய வலி" for chest pain, "மூச்சுத் திணறல்" for shortness of breath)
+- **Sinhala**: Uses proper Sinhala medical vocabulary (e.g., "හුස්ම ගැනීමේ අපහසුතාව" for breathing difficulty)
+
+#### **Culturally Authentic Conversations**
+- Patients respond naturally using colloquialisms and expressions from their language
+- Cultural references and healthcare contexts are woven naturally into conversations
+- AI may reference relevant traditional medicine practices when culturally appropriate
+
+#### **Language-Aware Evaluation**
+- Feedback delivered in your selected language
+- Medical terminology preserved in English where appropriate
+- Age and cultural background considered in feedback tone and style
+
+#### **How to Set Your Language**
+
+1. Navigate to **Profile View**
+2. Tap **Edit** in the top-right corner
+3. Select your preferred language from the **Native Language** dropdown
+4. Tap **Save Changes**
+5. All future simulations will use your selected language
+
+### Example Interactions
+
+**English Patient Response:**
+> "Doctor, I've been having this severe chest pain that started about 2 hours ago. It feels like someone is squeezing my chest."
+
+**Tamil Patient Response:**
+> "டாக்டர், எனக்கு இரண்டு மணி நேரத்திற்கு முன்பு மார்பு வலி ஆரம்பமானது. யாரோ என் மார்பை அழுத்துவது போல் உள்ளது."
+
+**Sinhala Patient Response:**
+> "ඩොක්ටර්, මට පැය දෙකකට පමණ පෙර ආරම්භ වූ දරුණු පපුවේ වේදනාවක් තියෙනවා. යමෙකු මගේ පපුව මිරිකනවා වගේ දැනෙනවා."
 
 ---
 
@@ -308,11 +421,13 @@ The AI Preceptor provides real-time guidance from a virtual attending physician 
 ### Hint Types
 
 #### **Progressive Difficulty Levels**
+
 - **Level 1 (Subtle)**: Socratic questions pointing to missed patterns
 - **Level 2 (Specific)**: Directed clinical reasoning with red flags
 - **Level 3 (Direct)**: Strong guidance with narrowed differentials
 
 #### **Contextual Awareness**
+
 - **Conversation History**: Hints consider your dialogue with the patient
 - **Ordered Tests**: AI knows what diagnostics you've requested
 - **Clinical Actions**: Previous interventions influence guidance
@@ -338,6 +453,69 @@ The AI Preceptor provides real-time guidance from a virtual attending physician 
 
 ---
 
+## 👤 User Authentication & Profiles
+
+Clinical Simulator features a comprehensive user authentication system with rich profile customization, ensuring a personalized and secure learning experience.
+
+### Authentication System
+
+#### **Secure Sign Up**
+- Email-based account creation
+- SHA-256 password hashing for security
+- Duplicate email prevention
+- Validation for all input fields
+
+#### **Persistent Login**
+- Automatic session restoration on app launch
+- Secure credential storage using AppStorage
+- Email-based user lookup via SwiftData
+
+#### **Session Management**
+- One-tap logout functionality
+- All user data scoped to individual accounts
+- Session history and progress tracked per user
+
+### Profile Customization
+
+#### **Personal Information**
+- **Full Name**: Display name shown throughout the app
+- **Email Address**: Unique login identifier
+- **Role/Title**: Select from 15+ medical professional roles (MS1-MS4, Resident, Attending, etc.)
+- **Gender**: Inclusive options (Male, Female, Non-Binary, Prefer Not to Say)
+- **Date of Birth**: Optional for age-appropriate feedback and birthday celebrations
+- **Native Language**: Choose English, Tamil (தமிழ்), or Sinhala (සිංහල)
+
+#### **Profile Images**
+- Upload custom profile pictures
+- Built-in image cropping with Mantis framework
+- Real-time avatar sync across all views
+- UUID-based secure file storage
+- Automatic fallback to initials if no image
+
+#### **Birthday Celebrations** 🎉
+When it's your birthday, enjoy special touches:
+- Animated rainbow border around your profile avatar
+- Special birthday greeting on Dashboard
+- Celebratory animations throughout the app
+
+### Profile Settings
+
+Access your profile anytime from the **Profile** tab:
+
+1. **View Mode**: See your current settings and stats
+2. **Edit Mode**: Tap "Edit" to modify any field
+3. **Save Changes**: All updates sync instantly with SwiftData
+4. **Reset Options**: Clear simulation history or reload sample cases
+
+### Privacy & Data
+
+- ✅ **All data stored locally**: No cloud storage required
+- ✅ **No data sharing**: Your information stays on your device
+- ✅ **Secure passwords**: Industry-standard SHA-256 hashing
+- ✅ **Profile images**: Stored in app's Documents directory with secure filenames
+
+---
+
 ## 🎓 User Roles & Personalization
 
 The app adapts content and evaluation based on your selected role:
@@ -356,12 +534,14 @@ The app adapts content and evaluation based on your selected role:
 | **Nursing Student**           | Beginner         | Basic care, assessment                  |
 | **Respiratory Therapist**     | Intermediate     | Ventilation, oxygenation                |
 
-**Set your role in Profile View** to receive personalized:
+**Set your preferences in Profile View** to receive personalized:
 
-- Case recommendations
-- Evaluation rubrics
-- AI patient communication style
-- Feedback calibration
+- **Case Recommendations**: Tailored to your training level and role
+- **Evaluation Rubrics**: Adapted difficulty and scoring criteria
+- **AI Patient Communication**: Response style matches your experience level
+- **Feedback Calibration**: Age-appropriate and culturally sensitive feedback
+- **Language Selection**: Choose English, Tamil (தமிழ்), or Sinhala (සිංහල) for full immersion
+- **Profile Customization**: Update name, role, gender, date of birth, and avatar image
 
 ---
 
@@ -378,22 +558,32 @@ ClinicalSimulator/
 │   ├── StudentSession.swift            # Session tracking
 │   ├── EnhancedCaseDetail.swift        # Complex case structure
 │   ├── ConversationMessage.swift       # Chat messages
-│   ├── UserProfile.swift               # User settings
-│   └── CaseTemplate.swift              # Case generation templates
+│   ├── User.swift                      # User authentication & profile
+│   ├── UserProfile.swift               # Profile roles & settings
+│   ├── CaseTemplate.swift              # Case generation templates
+│   └── EvaluationResult.swift          # Assessment data model
 │
 ├── Views/
 │   ├── MainTabView.swift               # Main navigation
-│   ├── DashboardView.swift             # Home screen
-│   ├── SimulationView.swift            # Simulation container
-│   ├── ConversationTabView.swift       # Chat interface
-│   ├── DiagnosticsTabView.swift        # Test ordering
-│   ├── NotesTabView.swift              # Clinical notes
-│   ├── PatientMonitorView.swift        # Vitals display
-│   ├── EvaluationView.swift            # Performance review
-│   ├── DebriefView.swift               # Teaching points
-│   ├── CaseLibraryView.swift           # Case browser
-│   ├── CaseBriefingView.swift          # Case preview
-│   └── ProfileView.swift               # User settings
+│   ├── DashboardView.swift             # Personalized home screen with stats
+│   ├── SimulationView.swift            # Simulation container with tabs
+│   ├── ConversationTabView.swift       # Chat interface with hint panel
+│   ├── DiagnosticsTabView.swift        # Test ordering with justifications
+│   ├── NotesTabView.swift              # Clinical notes & differentials
+│   ├── PatientMonitorView.swift        # Real-time vitals with animations
+│   ├── EvaluationView.swift            # AI-powered performance review
+│   ├── DebriefView.swift               # Teaching points & diagnosis reveal
+│   ├── CaseLibraryView.swift           # Filterable case browser
+│   ├── CaseBriefingView.swift          # Detailed case preview
+│   ├── ProfileView.swift               # User settings & profile editor
+│   ├── ReportsView.swift               # Session history & analytics
+│   ├── AnimatedAvatarView.swift        # Birthday celebration avatar
+│   ├── CategoryCardView.swift          # Specialty category cards
+│   ├── CaseListItemView.swift          # Individual case list item
+│   └── Auth/
+│       ├── LoginView.swift             # Email/password login
+│       ├── SignUpView.swift            # User registration
+│       └── AuthHeaderView.swift        # Auth screen branding
 │
 ├── ViewModels/
 │   ├── ChatViewModel.swift             # Conversation logic + AI Preceptor
@@ -405,21 +595,23 @@ ClinicalSimulator/
 │
 ├── Services/
 │   ├── GeminiService.swift             # AI integration + Priority Window
-│   └── DataManager.swift               # Data persistence + scenePhase monitoring
+│   ├── DataManager.swift               # Data persistence + case loading
+│   └── Auth/
+│       └── AuthService.swift           # User authentication & session management
 │
 ├── Shared/
-│   ├── CaseRow.swift                   # Reusable case card
-│   ├── ProfileAvatarView.swift         # User avatar
-│   └── SpecialtyDetailsProvider.swift  # Specialty metadata
+│   ├── CaseRow.swift                   # Reusable case card component
+│   ├── ProfileAvatarView.swift         # User avatar with image loading
+│   └── SpecialtyDetailsProvider.swift  # Specialty colors, icons & descriptions
 │
 ├── Resources/
 │   ├── SampleCases.json                # Pre-built cases
 │   └── Assets.xcassets/                # Images and colors
 │
 └── Utils/
-    ├── AppNotifications.swift          # Notification helpers
-    ├── ImageCropper.swift              # Image utilities
-    └── KeyboardHelper.swift            # Keyboard management
+    ├── AppNotifications.swift          # NotificationCenter extensions
+    ├── ImageCropper.swift              # Profile image cropping utility
+    └── KeyboardHelper.swift            # Keyboard dismissal helpers
 ```
 
 ---
@@ -624,10 +816,20 @@ The app uses sophisticated prompt engineering:
 
 ### Data Protection
 
-- ✅ **Local-First**: All patient data stored locally
-- ✅ **No PII Storage**: Fictional patient cases only
-- ✅ **Gitignored Secrets**: API keys excluded from version control
-- ✅ **Firebase Security**: Authentication and encryption ready
+- ✅ **Local-First Architecture**: All user data, sessions, and patient cases stored locally using SwiftData
+- ✅ **Secure Authentication**: SHA-256 password hashing with salt
+- ✅ **No PII Storage**: Fictional patient cases only—no real patient data
+- ✅ **Gitignored Secrets**: API keys and configuration files excluded from version control
+- ✅ **Firebase Security**: Secure API communication with Gemini AI
+- ✅ **User Data Isolation**: All sessions and progress scoped to individual user accounts
+- ✅ **Profile Image Security**: UUID-based filenames prevent unauthorized access
+
+### Authentication Security
+
+- **Password Requirements**: Enforced minimum complexity
+- **Email Validation**: Prevents invalid email formats
+- **Duplicate Prevention**: Email uniqueness enforced at database level
+- **Secure Storage**: User credentials never logged or transmitted insecurely
 
 ### Excluded Files
 
@@ -637,7 +839,19 @@ GoogleService-Info.plist
 *.key
 *.pem
 Secrets.xcconfig
+*.xcuserstate
+UserInterfaceState.xcuserstate
 ```
+
+### Firebase Integration
+
+The app uses Firebase AI (Gemini) for:
+- ✅ Patient conversation generation
+- ✅ Clinical evaluation and feedback
+- ✅ AI Preceptor hints and guidance
+- ✅ Case generation from templates
+
+**Note**: Firebase Analytics is configured but can be disabled in settings.
 
 ---
 
@@ -645,20 +859,45 @@ Secrets.xcconfig
 
 ### Manual Testing Checklist
 
-- [ ] Start new simulation
+#### Authentication & Profile
+- [ ] Sign up with new email and password
+- [ ] Log in with existing credentials
+- [ ] Update profile settings (name, role, gender, DOB, language)
+- [ ] Upload and crop profile image
+- [ ] Log out and verify session cleared
+
+#### Dashboard & Navigation
+- [ ] View personalized greeting and stats
+- [ ] Check birthday animation (if applicable)
+- [ ] Browse recommended cases for role
+- [ ] Filter cases by specialty and difficulty
+- [ ] Continue in-progress sessions
+
+#### Simulation Experience
+- [ ] Start new simulation and read briefing
 - [ ] Send chat messages with streaming responses
+- [ ] Test multi-language patient responses (Tamil, Sinhala)
+- [ ] Request AI Preceptor hints and verify panel display
+- [ ] Get another hint and verify different perspective
 - [ ] Order diagnostic tests with justifications
-- [ ] Build differential diagnosis
-- [ ] Verify vital sign updates
-- [ ] Complete simulation and view evaluation
-- [ ] Check performance dashboard
+- [ ] Build differential diagnosis with confidence levels
+- [ ] Verify vital sign updates with smooth animations
+- [ ] Monitor living patient physics (vital sign drift)
+- [ ] Complete simulation and view AI-generated evaluation
+
+#### Reports & Analytics
+- [ ] Check performance dashboard and statistics
+- [ ] Review session history with specialty theming
 - [ ] Test role-based recommendations
+- [ ] Verify haptic feedback throughout app
 
 ### Known Issues
 
 - Performance may vary based on network speed (AI streaming)
-- Some animations may stutter on older devices
-- First AI response may have slight delay (cold start)
+- Some animations may stutter on older devices (iOS 17.0 minimum)
+- First AI response may have slight delay (Gemini API cold start)
+- Profile image cropping requires iOS 17+ for optimal experience
+- Haptic feedback unavailable on simulator (test on physical device)
 
 ---
 
@@ -666,14 +905,18 @@ Secrets.xcconfig
 
 ### Planned Features
 
+- [ ] **Additional Languages**: Hindi, Spanish, Mandarin, Arabic support
 - [ ] **Multi-Patient Rounds**: Manage multiple patients simultaneously
-- [ ] **Team Collaboration**: Multi-user simulations
-- [ ] **Voice Input**: Speak to patients naturally
-- [ ] **Advanced Analytics**: Machine learning insights
-- [ ] **Custom Cases**: User-generated content
-- [ ] **Offline Mode**: Local AI model fallback
-- [ ] **Export Reports**: PDF performance summaries
-- [ ] **Gamification**: Achievements and leaderboards
+- [ ] **Team Collaboration**: Multi-user simulations with role assignments
+- [ ] **Voice Input**: Speak to patients naturally with speech-to-text
+- [ ] **Advanced Analytics**: Machine learning insights and trend analysis
+- [ ] **Custom Cases**: User-generated content and case sharing
+- [ ] **Offline Mode**: Local AI model fallback for network-free practice
+- [ ] **Export Reports**: PDF performance summaries and certificates
+- [ ] **Gamification**: Achievements, badges, and leaderboards
+- [ ] **Cloud Sync**: Optional cloud backup and multi-device sync
+- [ ] **Video Briefings**: Multimedia case presentations
+- [ ] **AR Patient Examination**: Augmented reality physical exam features
 
 ---
 
