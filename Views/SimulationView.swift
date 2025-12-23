@@ -2,6 +2,7 @@
 
 import SwiftUI
 import SwiftData
+import Combine
 
 // ✅ ARCHITECTURAL REWORK: The SimulationEnvironment coordinator object.
 /// This object acts as a single, encapsulated environment for a simulation session.
@@ -15,6 +16,9 @@ final class SimulationEnvironment: ObservableObject {
     let chatVM: ChatViewModel
     let diagnosticsVM: DiagnosticsViewModel
     let notesVM: NotesViewModel
+    
+    // ✅ FIX: Cancellables to store the observation subscriptions
+    private var cancellables = Set<AnyCancellable>()
     
     init(chatViewModel: ChatViewModel) {
         // The incoming ChatViewModel is the source of truth for the session data.
@@ -34,6 +38,26 @@ final class SimulationEnvironment: ObservableObject {
             session: chatViewModel.session,
             modelContext: chatViewModel.modelContext
         )
+        
+        // ✅ CRITICAL FIX: Forward objectWillChange from child ViewModels to this environment.
+        // This ensures that when any ViewModel updates (like the physiology timer in simulationVM),
+        // the SimulationEnvironment also publishes a change, triggering SimulationView to re-render.
+        
+        simulationVM.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+            
+        chatVM.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+            
+        diagnosticsVM.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+            
+        notesVM.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
     }
 }
 
@@ -145,6 +169,7 @@ struct SimulationView: View {
     
     private var trailingToolbarItem: ToolbarItem<(), some View> {
         ToolbarItem(placement: .confirmationAction) {
+            // Existing Submit Button
             Button("Submit", action: { isShowingEndConfirmation = true })
                 .fontWeight(.semibold)
         }

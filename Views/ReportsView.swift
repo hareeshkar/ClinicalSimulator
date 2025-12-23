@@ -1,84 +1,216 @@
 import SwiftUI
 import SwiftData
-import UIKit // ✅ ADDED for haptics
+import UIKit
 
-// MARK: - ReportsView (Main Entry)
+// MARK: - Sort Options Enum (Unchanged)
+enum SortOption: String, CaseIterable, Identifiable {
+    case latestToOld = "Most Recent" // Renamed for clarity
+    case oldestToLatest = "Oldest First" // Renamed for clarity
+    case aToZ = "A-Z"
+    case zToA = "Z-A"
+    case highestScore = "Highest Score"
+    case lowestScore = "Lowest Score"
+    
+    var id: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .latestToOld, .oldestToLatest:
+            return "calendar"
+        case .aToZ, .zToA:
+            return "textformat.abc"
+        case .highestScore, .lowestScore:
+            return "chart.bar"
+        }
+    }
+}
 
+// MARK: - ReportsView (Completely Redesigned)
 struct ReportsView: View {
     @Query private var allCases: [PatientCase]
-    @Query(
-        filter: #Predicate<StudentSession> { $0.isCompleted },
-        sort: \.sessionId,
-        order: .reverse
-    )
+    @Query(filter: #Predicate<StudentSession> { $0.isCompleted })
     private var completedSessions: [StudentSession]
 
-    // ✅ ADDED ENVIRONMENT OBJECT
     @EnvironmentObject private var navigationManager: NavigationManager
-    // ✅ ADD ENVIRONMENT USER
     @Environment(User.self) private var currentUser
+    
+    @State private var sortOption: SortOption = .latestToOld
 
-    private var userCompletedSessions: [StudentSession] { // ✅ CREATE FILTERED PROPERTY
+    // MARK: - Computed Properties
+    private var userCompletedSessions: [StudentSession] {
         completedSessions.filter { $0.user?.id == currentUser.id }
     }
-
-    private var completedCases: [PatientCase] {
-        // ✅ USE THE FILTERED SESSIONS
-        let ids = Set(userCompletedSessions.map { $0.caseId })
-        return allCases
-            .filter { ids.contains($0.caseId) }
-            .sorted { $0.title < $1.title }
+    
+    private var averageScore: Int {
+        let scores = userCompletedSessions.compactMap { $0.score }
+        guard !scores.isEmpty else { return 0 }
+        return Int((scores.reduce(0, +) / Double(scores.count)).rounded())
     }
 
-    var body: some View {
-        // ✅ BIND THE NAVIGATION STACK TO THE MANAGER'S PATH
-        NavigationStack(path: $navigationManager.reportsPath) {
-            ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+    private var sortedCaseSessionPairs: [(patientCase: PatientCase, session: StudentSession)] {
+        let caseSessionMap = Dictionary(uniqueKeysWithValues: allCases.map { ($0.caseId, $0) })
+        
+        return userCompletedSessions.compactMap { session -> (PatientCase, StudentSession)? in
+            guard let patientCase = caseSessionMap[session.caseId] else { return nil }
+            return (patientCase, session)
+        }.sorted { lhs, rhs in
+            switch sortOption {
+            case .latestToOld:
+                return completionDate(for: lhs.session) > completionDate(for: rhs.session)
+            case .oldestToLatest:
+                return completionDate(for: lhs.session) < completionDate(for: rhs.session)
+            case .aToZ:
+                return lhs.patientCase.title < rhs.patientCase.title
+            case .zToA:
+                return lhs.patientCase.title > rhs.patientCase.title
+            case .highestScore:
+                return (lhs.session.score ?? 0) > (rhs.session.score ?? 0)
+            case .lowestScore:
+                return (lhs.session.score ?? 0) < (rhs.session.score ?? 0)
+            }
+        }
+    }
+    
+    private func completionDate(for session: StudentSession) -> Date {
+        return session.messages.map { $0.timestamp }.max() ?? session.performedActions.map { $0.timestamp }.max() ?? .distantPast
+    }
 
-                if completedCases.isEmpty {
-                    ContentUnavailableView(
-                        "No Reports Yet",
-                        systemImage: "doc.text.magnifyingglass",
-                        description: Text("Complete a simulation to see your performance reports here.")
-                    )
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(completedCases) { patientCase in
-                                // ✅ The NavigationLink now uses .value to push the case onto the path
-                                NavigationLink(value: patientCase) {
-                                    if let session = mostRecentSession(for: patientCase.caseId) {
-                                        CaseListItemView(
-                                            patientCase: patientCase,
-                                            session: session,
-                                            action: .review
-                                        )
-                                    }
-                                }
-                                .buttonStyle(EnhancedCardButtonStyle())
-                            }
-                        }
-                        .padding()
+    // MARK: - Main Body
+    var body: some View {
+        NavigationStack(path: $navigationManager.reportsPath) {
+            ScrollView {
+                VStack(spacing: 24) {
+                    headerView
+                    
+                    if sortedCaseSessionPairs.isEmpty {
+                        ContentUnavailableView(
+                            "No Reports Yet",
+                            systemImage: "doc.text.magnifyingglass",
+                            description: Text("Complete a simulation to see your performance reports here.")
+                        )
+                        .padding(.top, 50)
+                    } else {
+                        reportsList
                     }
                 }
+                .padding(.horizontal)
             }
-            .navigationTitle("All Reports")
-            // ✅ DEFINE THE DESTINATION FOR A PATIENTCASE
+            .background(Color(.systemGroupedBackground))
+            .navigationTitle("Performance Reports")
+            .navigationBarHidden(true) // Hide the default bar to use our custom header
             .navigationDestination(for: PatientCase.self) { patientCase in
                 CaseHistoryView(patientCase: patientCase)
             }
         }
     }
 
+    // MARK: - ViewBuilder Sub-components
+    
+    @ViewBuilder
+    private var headerView: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text("Performance Reports")
+                .font(.largeTitle.bold())
+                .padding(.top, 57)  // Updated to add 5x pt top padding to push down
+
+            Text("Review detailed analytics from your completed simulations to track your progress and identify areas for improvement.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            
+            HStack(spacing: 16) {
+                AverageScoreCardView(score: averageScore)
+                
+                Spacer() // Add spacer to push the menu to the right
+                
+                Menu {
+                    ForEach(SortOption.allCases) { option in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            sortOption = option
+                        } label: {
+                            Label(option.rawValue, systemImage: sortOption == option ? "checkmark" : "")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.up.arrow.down")
+                        Text(sortOption.rawValue)
+                        Image(systemName: "chevron.up.chevron.down")
+                    }
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(.regularMaterial)
+                    .clipShape(Capsule())
+                }
+            }
+            .frame(height: 120)
+        }
+    }
+    
+    @ViewBuilder
+    private var reportsList: some View {
+        LazyVStack(spacing: 16) {
+            ForEach(sortedCaseSessionPairs, id: \.session.sessionId) { pair in
+                NavigationLink(value: pair.patientCase) {
+                    CaseListItemView(
+                        patientCase: pair.patientCase,
+                        session: pair.session,
+                        action: .review
+                    )
+                }
+                .buttonStyle(EnhancedCardButtonStyle())
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: sortOption)
+    }
+
     private func mostRecentSession(for caseId: String) -> StudentSession? {
-        // ✅ USE THE FILTERED SESSIONS
         userCompletedSessions.first { $0.caseId == caseId }
     }
 }
 
-// MARK: - Case History View (Now with Sheet Logic)
+// MARK: - Average Score Card View
+struct AverageScoreCardView: View {
+    let score: Int
+    @State private var animatedProgress: Double = 0
+    
+    private var scoreColor: Color {
+        score > 80 ? .green : score > 60 ? .orange : .red
+    }
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(scoreColor.opacity(0.15), lineWidth: 8)
 
+            Circle()
+                .trim(from: 0, to: animatedProgress)
+                .stroke(scoreColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            
+            VStack {
+                Text("\(score)")
+                    .font(.title.bold().monospacedDigit())
+                Text("AVG")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(8)
+        .background(.regularMaterial)
+        .clipShape(Circle())
+        .onAppear {
+            withAnimation(.spring(response: 0.8, dampingFraction: 0.8).delay(0.2)) {
+                animatedProgress = Double(score) / 100.0
+            }
+        }
+    }
+}
+
+
+// MARK: - Case History View (Unchanged but included for context)
 struct CaseHistoryView: View {
     let patientCase: PatientCase
 

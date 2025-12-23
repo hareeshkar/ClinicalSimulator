@@ -3,43 +3,100 @@ import FirebaseAI // This is the ONLY import you need for AI.
 final class GeminiService {
 
     // MARK: - AI Model Initialization (Correct way)
-    private let model = FirebaseAI.firebaseAI(backend: .googleAI()).generativeModel(modelName: "gemini-2.5-flash")
+    private let model = FirebaseAI.firebaseAI(backend: .googleAI()).generativeModel(modelName: "gemini-2.5-flash-lite")
 
     // MARK: - Shared Helper Functions
-
-    /// Creates a unified, time-ordered event log from conversation messages and student actions.
+    
+    // MARK: - Sliding Window Logic (Risk C Mitigation)
+    
+    /// Creates a unified, time-ordered event log with Clinical Priority Sliding Window optimization.
+    /// 
+    /// **ARCHITECTURE DECISION:**
+    /// - **KEEP ALL** performed actions (Labs, Meds, Vitals) → Medical history is absolute
+    /// - **KEEP LAST 100** conversation turns → Generous context window for deep clinical reasoning
+    /// - **SUMMARIZE/DROP** older conversation → Prevents token overflow while maintaining medical continuity
+    /// 
+    /// **RATIONALE:**
+    /// 1. Static medical facts (allergies, PMH) are injected from JSON prompt, not chat history
+    /// 2. 100 messages ≈ 30-45 minutes of conversation (sufficient for one clinical encounter)
+    /// 3. Prevents latency degradation and cost bloat in extended sessions
+    /// 4. Preserves physiological state integrity (all actions retained)
+    /// 
     /// - Parameters:
     ///   - session: The `StudentSession` containing the messages and actions.
     ///   - allStates: A dictionary of all possible states for the case, used to determine the patient's state at each event.
     /// - Returns: A formatted string representing the chronological history of the simulation.
     private func generateChronologicalLog(for session: StudentSession, with allStates: [String: StateDetail]) -> String {
-        // 1. Combine conversation and actions into a single timeline.
-        let conversationEvents = session.messages.map { (timestamp: $0.timestamp, description: "\($0.sender.capitalized): \($0.content)") }
-        let actionEvents = session.performedActions.map { (timestamp: $0.timestamp, description: "[System Event] Student administered: \($0.actionName). Justification: \($0.reason ?? "None provided.")") }
-        let allEvents = (conversationEvents + actionEvents).sorted { $0.timestamp < $1.timestamp }
-
-        // 2. Create a map to easily find which state is triggered by which action.
+        
+        // 1. Separate inputs - Sort messages chronologically
+        let allMessages = session.messages.sorted { $0.timestamp < $1.timestamp }
+        let allActions = session.performedActions.sorted { $0.timestamp < $1.timestamp }
+        
+        // 2. Apply Sliding Window to Conversation ONLY
+        // ✅ OPTIMIZED: 100 messages = ~50 exchange pairs, sufficient for deep clinical context
+        let maxMessagesToKeep = 100
+        let conversationToKeep: [ConversationMessage]
+        let wasTruncated: Bool
+        
+        if allMessages.count > maxMessagesToKeep {
+            // Keep the last 100 messages (most recent context)
+            conversationToKeep = Array(allMessages.suffix(maxMessagesToKeep))
+            wasTruncated = true
+        } else {
+            conversationToKeep = allMessages
+            wasTruncated = false
+        }
+        
+        // 3. Map to Tuple Format for Unified Timeline
+        let conversationEvents = conversationToKeep.map {
+            (timestamp: $0.timestamp, description: "\($0.sender.capitalized): \($0.content)")
+        }
+        
+        // ✅ KEY DECISION: We keep ALL action events.
+        // Medical interventions define the patient's physiological reality.
+        // Even if conversation is truncated, the AI MUST know:
+        // - What medications were given
+        // - What tests were ordered
+        // - What procedures were performed
+        // This ensures clinical accuracy and prevents simulation state corruption.
+        let actionEvents = allActions.map {
+            (timestamp: $0.timestamp, description: "[System Event] Student administered: \($0.actionName). Justification: \($0.reason ?? "None provided.")")
+        }
+        
+        // 4. Merge and Sort by Timestamp
+        let mergedEvents = (conversationEvents + actionEvents).sorted { $0.timestamp < $1.timestamp }
+        
+        // 5. State Mapping Logic
         let triggerToStateMap = allStates.reduce(into: [String: String]()) { result, state in
             if let trigger = state.value.trigger {
                 result[trigger] = state.key
             }
         }
-
-        // 3. Determine which actions caused a state change.
+        
         let stateChangeEvents = session.performedActions.compactMap { action -> (Date, String)? in
             guard let triggeredStateName = triggerToStateMap[action.actionName] else { return nil }
             return (action.timestamp, triggeredStateName)
         }.sorted { $0.0 < $1.0 }
-
-        // 4. Build the final log string, including the patient's state at the time of each event.
-        let chronologicalLog = allEvents.map { event in
-            // Find the most recent state change that occurred at or before this event's timestamp.
+        
+        // 6. Build Log String with Optional Truncation Notice
+        var logString = ""
+        
+        if wasTruncated {
+            logString += """
+            [...Earlier conversation history summarized: Patient and medical student have been discussing symptoms and clinical findings. \
+            All medical actions and interventions are preserved below. Focus on recent context...]\n\n
+            """
+        }
+        
+        let eventLines = mergedEvents.map { event in
             let activeStateName = stateChangeEvents.last { $0.0 <= event.timestamp }?.1 ?? "initial"
             let timeString = event.timestamp.formatted(date: .omitted, time: .standard)
             return "[\(timeString)] [Patient State: \(activeStateName.capitalized)] \(event.description)"
-        }.joined(separator: "\n")
-
-        return chronologicalLog
+        }
+        
+        logString += eventLines.joined(separator: "\n")
+        
+        return logString
     }
 
     // MARK: - Generate Patient Response for Simulation (Streaming)
@@ -535,6 +592,104 @@ final class GeminiService {
         Generate one fully populated case now, following every rule above.
         """
     }
+
+    // MARK: - AI Preceptor (Consult Attending) - Enhanced Socratic Teaching System
+
+    /// Generates a progressive, Socratic hint from a virtual attending physician.
+    /// The hint difficulty adapts based on how many hints the student has already requested.
+    /// - Parameters:
+    ///   - session: The current student session history.
+    ///   - caseDetail: The full case details (ground truth).
+    ///   - hintLevel: The progressive hint level (1 = subtle, 2 = specific, 3 = direct). The service will auto-adjust.
+    ///   - nativeLanguage: The learner's native language for response.
+    /// - Returns: A string containing the hint.
+    func generatePreceptorHint(
+        session: StudentSession,
+        caseDetail: EnhancedCaseDetail,
+        hintLevel: Int = 1,
+        nativeLanguage: NativeLanguage = .english,
+        isSameSection: Bool = false
+    ) async throws -> String {
+
+        // Use the already-defined chronological log generator inside this class
+        let chronologicalLog = generateChronologicalLog(for: session, with: caseDetail.dynamicState.states)
+
+        // Count how many "attending" messages already exist to determine hint progression
+        let previousHintsCount = session.messages.filter { $0.sender == "attending" }.count
+        let effectiveHintLevel = min(previousHintsCount + 1, 3) // Progressive difficulty: 1, 2, or 3
+
+        // Get learner profile for personalization
+        let learnerName = session.user?.fullName ?? "Learner"
+        let userRole = session.user?.roleTitle ?? "Learner"
+        var learnerAge = "Age not disclosed"
+        if let dob = session.user?.dateOfBirth {
+            let age = Calendar.current.dateComponents([.year], from: dob, to: Date()).year ?? 0
+            learnerAge = "\(age) years old"
+        }
+
+        let hintLevelDescription: String
+        let instructionStyle: String
+
+        switch effectiveHintLevel {
+        case 1:
+            hintLevelDescription = "LEVEL 1 (SUBTLE) - Socratic questioning only"
+            instructionStyle = """
+            Ask 1-2 thought-provoking questions that make the student reconsider their approach. Point to a pattern they might have missed WITHOUT naming it.
+            Example: "Looking at the vital signs again, what's unusual about the oxygen saturation relative to the respiratory rate?"
+            """
+
+        case 2:
+            hintLevelDescription = "LEVEL 2 (SPECIFIC) - Directed clinical reasoning"
+            instructionStyle = """
+            Point to a specific system or clinical domain to investigate and mention relevant red flags or concerning patterns. You may suggest a category of tests but NOT the exact diagnosis.
+            Example: "The combination of fever, hypotension, and tachycardia suggests a systemic inflammatory response. What conditions cause this triad?"
+            """
+
+        case 3:
+            hintLevelDescription = "LEVEL 3 (DIRECT) - Strong clinical direction"
+            instructionStyle = """
+            Provide strong clinical direction about what to do next. Narrow to 2-3 possible diagnoses and recommend specific next steps while asking the student to justify their choice.
+            Example: "Given the presentation, consider sepsis or cardiogenic shock. Which fits best with this patient's history?"
+            """
+
+        default:
+            hintLevelDescription = "LEVEL 1 (SUBTLE)"
+            instructionStyle = "Ask the student to re-check the vitals and consider alternate organ systems."
+        }
+
+        let prompt = """
+        You are a senior attending physician who uses the Socratic method to teach. A medical student has consulted you for guidance on a challenging case.
+
+        --- LEARNER CONTEXT ---
+        Name: \(learnerName)
+        Age: \(learnerAge)
+        Role: \(userRole)
+        Native Language: \(nativeLanguage.displayName)
+
+        **LANGUAGE:** Respond entirely in \(nativeLanguage.responseLanguage).
+
+        --- GROUND TRUTH (FOR YOUR EYES ONLY) ---
+        Case Title: \(caseDetail.metadata.title)
+        Final Diagnosis: \(caseDetail.metadata.finalDiagnosis ?? "Unknown")
+        Correct Next Steps: \(caseDetail.dynamicState.states["improving"]?.trigger ?? "Unknown treatment")
+        Chief Complaint: \(caseDetail.initialPresentation.chiefComplaint)
+
+        --- STUDENT'S PROGRESS ---
+        \(chronologicalLog.isEmpty ? "No activity recorded yet." : chronologicalLog)
+
+        --- TEACHING INSTRUCTION ---
+        \(hintLevelDescription)
+        \(instructionStyle)
+        \(isSameSection ? "\n**SPECIAL NOTE:** The student is asking for another hint on the SAME clinical section where they appear to be stuck. Provide a different approach or perspective on the same challenge. Offer alternative reasoning pathways or ask different questions to help them break through their current mental block." : "")
+
+        Tone: Professional, concise, and Socratic. 2-3 sentences maximum. Do NOT be too lengthy. Do NOT give the final diagnosis.
+
+        Attending's Hint:
+        """
+
+        let response = try await model.generateContent(prompt)
+        return response.text ?? "Review the patient's presentation and vitals carefully. What patterns do you notice?"
+    }
 }
 // MARK: - Helper Extensions
 extension Encodable {
@@ -548,6 +703,7 @@ extension Encodable {
         return string
     }
 }
+
 extension [ConversationMessage] {
     func formattedForPrompt() -> String {
         self.map { "\($0.sender.capitalized): \($0.content)" }.joined(separator: "\n")

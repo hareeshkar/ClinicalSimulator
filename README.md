@@ -38,14 +38,30 @@
 - **Dynamic Patient State**: Real-time vital sign changes based on clinical decisions
 - **Proactive Responses**: AI patients react to treatments and interventions autonomously
 - **Persona-Driven Behavior**: Each patient has unique personality, medical history, and presentation style
+- **Clinical Priority Sliding Window**: Optimized context management maintaining 100 most relevant messages without losing medical history
+
+### 🧠 AI Preceptor (Consult Attending)
+
+- **Real-Time Socratic Guidance**: Floating hint button provides instant access to attending physician insights
+- **Progressive Hint System**: AI adapts hint complexity based on learner level and session progress
+- **Contextual Coaching**: Hints consider conversation history, ordered tests, and clinical decisions
+- **Alternative Perspectives**: "Get Another Hint" offers different approaches to the same clinical challenge
+- **Distinct Visual Styling**: Attending messages appear in dedicated overlay panel with professional branding
 
 ### 📊 Clinical Workflow Simulation
 
 - **Multi-Tab Interface**:
-  - **Conversation**: Natural dialogue with the AI patient
+  - **Conversation**: Natural dialogue with the AI patient and floating hint access
   - **Diagnostics**: Order tests, imaging, and procedures with realistic results
   - **Notes**: Document clinical reasoning and differential diagnoses
   - **Vitals Monitor**: Real-time patient monitoring with animated transitions
+
+### 🫀 The Living Patient (Physics Engine)
+
+- **Realistic Vital Sign Drift**: Natural physiological variation and baseline fluctuations
+- **Clinical State Jitter**: Subtle vital sign changes reflecting patient condition
+- **Dynamic Response Modeling**: Vital signs react authentically to interventions and time
+- **Physiological Accuracy**: Evidence-based vital sign ranges and transitions
 
 ### 🎓 Educational Features
 
@@ -71,6 +87,13 @@
 - **Difficulty Filters**: Beginner, Intermediate, and Advanced cases
 - **Specialty Categories**: Emergency Medicine, Cardiology, Internal Medicine, Pediatrics, Neurology, Psychiatry, Pulmonology, Orthopedics, Infectious Disease, Endocrinology, Surgery, Obstetrics/Gynecology
 
+### 💾 Robust Data Persistence
+
+- **ScenePhase Monitoring**: Automatic session saving when app backgrounds or terminates
+- **Crash Recovery**: Session state preservation prevents data loss
+- **SwiftData Integration**: Efficient local database with automatic migrations
+- **Real-Time Sync**: Continuous session updates during active simulations
+
 ---
 
 ## 🏗️ Architecture
@@ -82,13 +105,13 @@
 │           SwiftUI + iOS 17+              │
 ├─────────────────────────────────────────┤
 │  ViewModels (MVVM Architecture)         │
-│  • ChatViewModel                         │
-│  • SimulationViewModel                   │
+│  • ChatViewModel (AI Preceptor)         │
+│  • SimulationViewModel (Living Patient) │
 │  • DiagnosticsViewModel                  │
 │  • EvaluationViewModel                   │
 ├─────────────────────────────────────────┤
 │  Services Layer                          │
-│  • GeminiService (AI Integration)        │
+│  • GeminiService (Priority Window)       │
 │  • DataManager (Persistence)             │
 ├─────────────────────────────────────────┤
 │  Data Layer (SwiftData)                  │
@@ -115,21 +138,22 @@
 #### 🔹 Services
 
 - **`GeminiService`**:
-
+  - **Clinical Priority Sliding Window**: Maintains 100-message context window for optimal AI performance
   - Streaming patient response generation
   - Professional evaluation with rubric-based scoring
   - Dynamic case generation from templates
   - Persona-driven prompt engineering
+  - **AI Preceptor Hints**: Socratic guidance with progressive difficulty and contextual awareness
 
 - **`DataManager`**:
-  - SwiftData integration
+  - SwiftData integration with scenePhase monitoring
   - JSON case loading
-  - Session management
+  - Session management with crash recovery
 
 #### 🔹 ViewModels
 
-- **`ChatViewModel`**: Manages conversation flow and AI streaming
-- **`SimulationViewModel`**: Controls patient state transitions and vital signs
+- **`ChatViewModel`**: Manages conversation flow, AI streaming, and preceptor hints
+- **`SimulationViewModel`**: Controls patient state transitions, vital signs, and physics engine
 - **`DiagnosticsViewModel`**: Handles test ordering and result revelation
 - **`EvaluationViewModel`**: Generates and presents performance assessments
 - **`NavigationManager`**: Global navigation state management
@@ -146,10 +170,10 @@
 
 **Simulation Views**:
 
-- `ConversationTabView`: Chat interface with streaming responses
+- `ConversationTabView`: Chat interface with streaming responses and floating hint panel
 - `DiagnosticsTabView`: Diagnostic test ordering interface
 - `NotesTabView`: Clinical notes and differential diagnosis builder
-- `PatientMonitorView`: Real-time vitals display
+- `PatientMonitorView`: Real-time vitals display with physics-based animations
 
 **Evaluation Views**:
 
@@ -235,6 +259,9 @@ On first launch, the app will:
 - Type messages to interact with the AI patient
 - Watch for streaming responses that appear word-by-word
 - Patient responses adapt to their current clinical state
+- **Access AI Preceptor**: Tap the floating "Hint" button for real-time attending physician guidance
+- **Progressive Hints**: Receive Socratic questions and clinical insights tailored to your progress
+- **Alternative Perspectives**: Use "Get Another Hint" for different approaches to the same challenge
 
 #### 🔬 Diagnostics Tab
 
@@ -256,6 +283,7 @@ On first launch, the app will:
 
 - Swipe down from top to view vital signs
 - Vitals update dynamically based on patient state
+- **Living Patient Physics**: Observe realistic vital sign drift and natural physiological variation
 - Animated transitions show clinical changes
 
 ### Ending Simulation
@@ -264,6 +292,49 @@ On first launch, the app will:
 2. Review your differential diagnosis
 3. Receive AI-generated evaluation
 4. Study the debrief with teaching points
+
+---
+
+## 🧠 AI Preceptor (Consult Attending)
+
+The AI Preceptor provides real-time guidance from a virtual attending physician during active simulations, helping learners develop clinical reasoning skills through Socratic teaching.
+
+### How to Access
+
+- **Floating Hint Button**: Look for the circular "Hint" button in the bottom-right corner of the conversation tab
+- **One-Tap Access**: Tap to instantly receive attending physician insights
+- **Non-Intrusive**: Hints appear in a dedicated overlay panel without interrupting the conversation flow
+
+### Hint Types
+
+#### **Progressive Difficulty Levels**
+- **Level 1 (Subtle)**: Socratic questions pointing to missed patterns
+- **Level 2 (Specific)**: Directed clinical reasoning with red flags
+- **Level 3 (Direct)**: Strong guidance with narrowed differentials
+
+#### **Contextual Awareness**
+- **Conversation History**: Hints consider your dialogue with the patient
+- **Ordered Tests**: AI knows what diagnostics you've requested
+- **Clinical Actions**: Previous interventions influence guidance
+- **Same Section Hints**: When stuck, "Get Another Hint" provides alternative perspectives
+
+### Features
+
+- **Real-Time Coaching**: Immediate feedback on clinical decisions
+- **Educational Focus**: Emphasis on teaching rather than giving answers
+- **Personalized Guidance**: Adapted to your training level and progress
+- **Multiple Perspectives**: Alternative approaches to the same clinical challenge
+- **Professional Styling**: Distinct visual design for attending messages
+
+### Example Interactions
+
+**Student Question**: "The patient has chest pain and shortness of breath. Should I order a chest X-ray?"
+
+**Level 1 Hint**: "Looking at the vital signs again, what do you notice about the oxygen saturation relative to the respiratory rate?"
+
+**Level 2 Hint**: "This combination of symptoms suggests a cardiopulmonary process. What conditions cause both chest pain and respiratory distress?"
+
+**Level 3 Hint**: "Consider pulmonary embolism or pneumothorax. Which fits better with this patient's risk factors?"
 
 ---
 
@@ -325,16 +396,16 @@ ClinicalSimulator/
 │   └── ProfileView.swift               # User settings
 │
 ├── ViewModels/
-│   ├── ChatViewModel.swift             # Conversation logic
-│   ├── SimulationViewModel.swift       # State management
+│   ├── ChatViewModel.swift             # Conversation logic + AI Preceptor
+│   ├── SimulationViewModel.swift       # State management + Living Patient physics
 │   ├── DiagnosticsViewModel.swift      # Test ordering logic
 │   ├── EvaluationViewModel.swift       # Assessment generation
 │   ├── NotesViewModel.swift            # Notes management
 │   └── NavigationManager.swift         # Global navigation
 │
 ├── Services/
-│   ├── GeminiService.swift             # AI integration
-│   └── DataManager.swift               # Data persistence
+│   ├── GeminiService.swift             # AI integration + Priority Window
+│   └── DataManager.swift               # Data persistence + scenePhase monitoring
 │
 ├── Shared/
 │   ├── CaseRow.swift                   # Reusable case card

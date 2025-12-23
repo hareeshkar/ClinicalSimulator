@@ -162,3 +162,25 @@ extension EnhancedCaseDetail {
         return redactedString
     }
 }
+
+// MARK: - Vitals Extension (Physiology Engine Helpers)
+
+extension Vitals {
+    /// Helper to decompose BP string "120/80 mmHg" into (120, 80).
+    var bpComponents: (systolic: Int, diastolic: Int)? {
+        guard let bp = bloodPressure else { return nil }
+        let clean = bp.replacingOccurrences(of: " mmHg", with: "")
+        let parts = clean.components(separatedBy: "/")
+        guard parts.count == 2,
+              let sys = Int(parts[0].trimmingCharacters(in: .whitespaces)),
+              let dia = Int(parts[1].trimmingCharacters(in: .whitespaces)) else {
+            return nil
+        }
+        return (sys, dia)
+    }
+    
+    /// Helper to reconstruct BP string from integers.
+    static func formatBP(systolic: Int, diastolic: Int) -> String {
+        return "\(systolic)/\(diastolic) mmHg"
+    }
+}

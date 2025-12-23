@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import UIKit
 
 @MainActor
 class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Identifiable
@@ -47,6 +48,8 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
         studentMessage.session = session
         modelContext.insert(studentMessage)
         messages.append(studentMessage)
+        // Save immediately after user input to ensure atomic persistence
+        saveSession()
         
         // 2. Set loading state to true. This will immediately show the Typing Indicator in the UI.
         isLoading = true
@@ -80,6 +83,8 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
                     // The UI will update automatically because it's a reference type.
                     patientMessage?.content += chunk
                 }
+                // Save immediately after AI finishes streaming
+                saveSession()
                 
             } catch {
                 // 7. If an error occurs, update the last message bubble with an error.
@@ -92,6 +97,8 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
                     modelContext.insert(errorMessage)
                     messages.append(errorMessage)
                 }
+                // Save error state too
+                saveSession()
             }
             
             // 8. Once the stream is finished, we are no longer loading.
@@ -131,12 +138,16 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
                     }
                     patientMessage?.content += chunk
                 }
+                // Save after proactive response finishes
+                saveSession()
             } catch {
                 // Handle error as usual
                 let errorMessage = ConversationMessage(sender: "patient", content: "Sorry, an error occurred. (\(error.localizedDescription))")
                 errorMessage.session = session
                 modelContext.insert(errorMessage)
                 messages.append(errorMessage)
+                // Save error state for proactive responses as well
+                saveSession()
             }
         }
     }
@@ -147,6 +158,107 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
         session.isCompleted = true
         try? modelContext.save()
         print("Session for case \(session.caseId) has been completed.")
+    }
+    
+    // MARK: - AI Preceptor (Consult Attending) - Enhanced Implementation
+    
+    /// Requests a Socratic hint from the AI attending physician.
+    /// Includes smart cooldown, progressive hint levels, and native language support.
+    func consultAttending() {
+        guard !isLoading else { 
+            print("⚠️ Attending is already responding...")
+            return 
+        }
+        
+        // Smart cooldown: Prevent spam requests (minimum 10 seconds between hints)
+        let lastAttendingMessage = messages.last { $0.sender == "attending" }
+        if let lastHintTime = lastAttendingMessage?.timestamp,
+           Date().timeIntervalSince(lastHintTime) < 10 {
+            print("⚠️ Please wait before requesting another hint.")
+            return
+        }
+        
+        isLoading = true
+        
+        // Decode the full case JSON to access ground truth
+        guard let data = patientCase.fullCaseJSON.data(using: .utf8),
+              let caseDetail = try? JSONDecoder().decode(EnhancedCaseDetail.self, from: data) else {
+            print("❌ Failed to decode case details for attending consultation.")
+            isLoading = false
+            return
+        }
+        
+        Task {
+            do {
+                // Get progressive hint based on how many hints already requested
+                let hint = try await geminiService.generatePreceptorHint(
+                    session: session,
+                    caseDetail: caseDetail,
+                    hintLevel: 1, // The service auto-calculates progressive level
+                    nativeLanguage: session.user?.nativeLanguage ?? .english,
+                    isSameSection: false
+                )
+                
+                // Create a distinct "attending" message for UI styling
+                let attendingMessage = ConversationMessage(sender: "attending", content: hint)
+                attendingMessage.session = session
+                
+                await MainActor.run {
+                    modelContext.insert(attendingMessage)
+                    messages.append(attendingMessage)
+                    saveSession()
+                    isLoading = false
+                    
+                    // Haptic feedback for successful hint delivery
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    
+                    print("✅ Attending hint delivered successfully.")
+                }
+            } catch {
+                print("❌ Failed to get attending hint: \(error.localizedDescription)")
+                await MainActor.run {
+                    // Provide a fallback hint if API fails
+                    let fallbackMessage = ConversationMessage(
+                        sender: "attending",
+                        content: "Take a step back and review the vital signs systematically. What patterns stand out?"
+                    )
+                    fallbackMessage.session = session
+                    modelContext.insert(fallbackMessage)
+                    messages.append(fallbackMessage)
+                    saveSession()
+                    isLoading = false
+                }
+            }
+        }
+    }
+    
+    // Get hint for panel display (without adding to conversation)
+    func getHintForPanel(isSameSection: Bool = false) async throws -> String {
+        // Decode the full case JSON to access ground truth
+        guard let data = patientCase.fullCaseJSON.data(using: .utf8),
+              let caseDetail = try? JSONDecoder().decode(EnhancedCaseDetail.self, from: data) else {
+            throw NSError(domain: "ChatViewModel", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to decode case details"])
+        }
+        
+        // Get progressive hint based on how many hints already requested
+        return try await geminiService.generatePreceptorHint(
+            session: session,
+            caseDetail: caseDetail,
+            hintLevel: 1, // The service auto-calculates progressive level
+            nativeLanguage: session.user?.nativeLanguage ?? .english,
+            isSameSection: isSameSection
+        )
+    }
+    
+    // Public helper for robust persistence
+    func saveSession() {
+        do {
+            try modelContext.save()
+            print("✅ [ChatViewModel] Session saved successfully.")
+        } catch {
+            print("❌ [ChatViewModel] Failed to save session: \(error.localizedDescription)")
+        }
     }
     
 }
