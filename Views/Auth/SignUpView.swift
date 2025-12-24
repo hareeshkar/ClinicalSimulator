@@ -1,534 +1,350 @@
 import SwiftUI
 import PhotosUI
 import SwiftData
+import CoreHaptics
 
+// MARK: - 🌌 CONTEXT ENGINE (Shared Architecture)
+// Reusing the same context engine logic for consistency,
+// but localizing it here if not shared globally yet.
+@MainActor
+class SignUpInteractionContext: ObservableObject {
+    @Published var intensity: Double = 0.0
+    private var lastInputTime: Date = Date()
+    
+    func registerInteraction() {
+        let now = Date()
+        let interval = now.timeIntervalSince(lastInputTime)
+        lastInputTime = now
+        
+        let rawIntensity = min(1.0, max(0.0, 1.0 - (interval * 1.5)))
+        withAnimation(.interactiveSpring(response: 0.5, dampingFraction: 0.6)) {
+            self.intensity = rawIntensity
+        }
+        
+        // Optimized: Reduced decay duration for better performance
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            withAnimation(.easeOut(duration: 0.6)) {
+                self?.intensity = 0.0
+            }
+        }
+    }
+}
+
+// MARK: - 🏆 MASTER VIEW: SIGN UP
 struct SignUpView: View {
-    // MARK: - State Properties
+    // Backend & Environment
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.dismiss) var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+    @StateObject private var context = SignUpInteractionContext()
+    
+    // Data Model
     @State private var fullName = ""
     @State private var email = ""
     @State private var password = ""
     @State private var confirmPassword = ""
-    @State private var selectedRole: UserProfileRole = .studentMS3 // Default role
+    @State private var selectedRole: UserProfileRole = .studentMS3
     
-    // Image Picking State
+    // Profile Assets
     @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var profileImage: UIImage? // This will hold the final cropped image
+    @State private var profileImage: UIImage?
     @State private var tempImageForCropping: UIImage?
     @State private var isShowingCropper = false
     
-    // ✅ NEW: State for gender and DOB
+    // Demographics
     @State private var selectedGender: Gender = .preferNotToSay
     @State private var dateOfBirth = Calendar.current.date(byAdding: .year, value: -25, to: Date()) ?? Date()
     @State private var provideDOB = false
-    
-    // ✅ NEW: State for native language selection
     @State private var selectedNativeLanguage: NativeLanguage = .english
     
-    // View State
-    @State private var errorMessage: String?
+    // UX State
+    @State private var currentStep = 0 // 0: Identity, 1: Credentials, 2: Profile
     @State private var isSigningUp = false
-    @State private var hasError = false
-    @State private var isPasswordVisible = false
-    private let errorHaptic = UINotificationFeedbackGenerator()
-    
+    @State private var errorMessage: String?
     @FocusState private var focusedField: Field?
-    @EnvironmentObject var authService: AuthService
-    @Environment(\.dismiss) var dismiss
-    @Environment(\.colorScheme) private var colorScheme
     
-    enum Field: CaseIterable {
-        case fullName, email, password, confirmPassword
-    }
+    enum Field { case fullName, email, password, confirmPassword }
     
-    // MARK: - Main Body
     var body: some View {
         ZStack {
-            // Layer 1: Adaptive Background (re-used from LoginView)
-            adaptiveBackground
+            // Layer 0: Living Atmosphere
+            AtmosphericBackground(intensity: context.intensity)
+                .ignoresSafeArea()
+                .onTapGesture { focusedField = nil }
             
-            // Layer 2: Main Content
-            ScrollView {
-                VStack(spacing: 18) {  // Reduced from 24
-                    headerSection
+            // Layer 1: Content Flow
+            VStack(spacing: 0) {
+                // Header Navigation
+                HStack {
+                    Spacer()
                     
-                    // Layer 3: Premium Glass Card
-                    VStack(spacing: 18) {  // Reduced from 24
-                        profilePickerSection
-                        
-                        VStack(spacing: 14) {  // Reduced from 16
-                            fullNameField
-                            emailField
-                            passwordField
-                            confirmPasswordField
-                            // ✅ NEW: Add gender and DOB fields
-                            genderPicker
-                            dobSection
-                            // ✅ NEW: Add language picker
-                            languagePicker
-                            rolePicker
+                    // Step Indicator
+                    HStack(spacing: 4) {
+                        ForEach(0..<3) { step in
+                            Capsule()
+                                .fill(step == currentStep ? Color.cyan : Color.white.opacity(0.2))
+                                .frame(width: step == currentStep ? 24 : 8, height: 4)
+                                .animation(.spring, value: currentStep)
                         }
-                        // Shake animation on error
-                        .modifier(ShakeEffect(shakes: hasError ? 2 : 0))
-                        .animation(hasError ? .spring(response: 0.15, dampingFraction: 0.8) : .none, value: hasError)
-                        
-                        errorSection
-                        
-                        createAccountButton
                     }
-                    .padding(20)  // Reduced from 24
-                    .background(cardBackgroundMaterial)
-                    .overlay(cardBorder)
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .shadow(color: shadowColor, radius: 20, x: 0, y: 10)
-                    .padding(.horizontal, 20)
-                    
-                    signInLink
                 }
-                .padding(.vertical, 20)  // Reduced from 25
+                .padding(.horizontal, 24)
+                .padding(.top, 60)
+                
+                Spacer()
+                    .frame(maxHeight: 40) // Reduced spacer to push content up
+                
+                // Main Interactive Area
+                ZStack {
+                    switch currentStep {
+                    case 0: identityStep
+                    case 1: credentialsStep
+                    case 2: profileStep
+                    default: EmptyView()
+                    }
+                }
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.9))
+                ))
+                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+                
+                Spacer()
+                    .frame(maxHeight: 60) // Reduced bottom spacer
+                
+                // Bottom Action Area
+                if errorMessage != nil {
+                    Text(errorMessage?.uppercased() ?? "")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.red)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                
+                PrimaryActionButton(
+                    title: currentStep == 2 ? "Create Account" : "Next",
+                    isLoading: isSigningUp,
+                    action: handleNextStep
+                )
+                .padding(.horizontal, 24)
+                .padding(.bottom, 40)
             }
-            .scrollDismissesKeyboard(.immediately)
-            .navigationBarBackButtonHidden(true)
-            .navigationBarHidden(true)
         }
-        .background(adaptiveSystemBackground)
-        .preferredColorScheme(nil) // Respect system theme
+        .preferredColorScheme(.dark) // Enforce cinematic mode
         .onChange(of: selectedPhotoItem) { handlePhotoSelection() }
         .fullScreenCover(isPresented: $isShowingCropper) {
-            // This logic is preserved from your original file
             ImageCropper(image: $tempImageForCropping) { croppedImage in
                 profileImage = croppedImage
                 tempImageForCropping = nil
             }
         }
     }
-
-    // MARK: - Computed Properties for Theme Adaptation
     
-    private var adaptiveBackground: some View {
-        ZStack {
-            LinearGradient(
-                gradient: Gradient(colors: backgroundGradientColors),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            .ignoresSafeArea()
+    // MARK: - 🎞️ STEP 1: IDENTITY
+    var identityStep: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            Text("Create Your Account")
+                .font(.system(size: 48, weight: .black, design: .default))
+                .tracking(-1)
+                .foregroundStyle(.white)
+                .mask(LinearGradient(colors: [.white, .white.opacity(0.5)], startPoint: .top, endPoint: .bottom))
             
-            Circle()
-                .fill(accentShapeColor)
-                .blur(radius: 100)
-                .offset(x: -120, y: -200)
-                .opacity(shapeOpacity)
-            
-            Circle()
-                .fill(secondaryShapeColor)
-                .blur(radius: 140)
-                .offset(x: 150, y: 150)
-                .opacity(shapeOpacity * 0.8)
-        }
-        // Make background taps dismiss the keyboard without capturing child touches
-        .contentShape(Rectangle())
-        .onTapGesture {
-            focusedField = nil
-        }
-    }
-    
-    private var backgroundGradientColors: [Color] {
-        colorScheme == .dark ? [Color.black.opacity(0.9), Color(.systemGray6).opacity(0.3)] : [Color(.systemBackground), Color(.systemGray6).opacity(0.5)]
-    }
-    
-    private var accentShapeColor: Color {
-        colorScheme == .dark ? Color.cyan.opacity(0.3) : Color.cyan.opacity(0.4)
-    }
-    
-    private var secondaryShapeColor: Color {
-        colorScheme == .dark ? Color.accentColor.opacity(0.2) : Color.accentColor.opacity(0.3)
-    }
-    
-    private var shapeOpacity: Double {
-        colorScheme == .dark ? 0.4 : 0.6
-    }
-    
-    private var cardBackgroundMaterial: Material {
-        colorScheme == .dark ? .ultraThickMaterial : .ultraThinMaterial
-    }
-    
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: 24, style: .continuous)
-            .stroke(borderColor, lineWidth: borderWidth)
-    }
-    
-    private var borderColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08)
-    }
-    
-    private var borderWidth: CGFloat {
-        colorScheme == .dark ? 1.5 : 1.0
-    }
-    
-    private var shadowColor: Color {
-        colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.1)
-    }
-    
-    private var adaptiveSystemBackground: Color {
-        Color(.systemBackground)
-    }
-    
-    // ✅ ADD: Computed properties for genderPicker
-    private var iconColor: Color {
-        Color.secondary
-    }
-    
-    private var fieldBackgroundColor: Color {
-        colorScheme == .dark ? Color(.systemGray6).opacity(0.6) : Color(.systemGray6).opacity(0.5)
-    }
-    
-    private var fieldBorderColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.1) : Color.black.opacity(0.08)
-    }
-
-    // MARK: - ViewBuilder Components
-    
-    private var headerSection: some View {
-        VStack(spacing: 8) {  // Reduced from 10
-            // Stronger, more aspirational headline
-            Text("Join the Next Generation of Clinicians")
-                .font(.system(.title, design: .rounded).weight(.semibold))
-                .foregroundStyle(.primary)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-            
-            // Benefit-driven subheading with horizontal padding to avoid edge-clipping
-            Text("Get personalized simulations, tailored feedback, and smarter case recommendations based on your role.")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .lineLimit(3)
-                .padding(.horizontal, 20)
-        }
-        .padding(.top, 20)  // Reduced from 25
-        .padding(.bottom, 10)  // Reduced from 12
-    }
-    
-    private var profilePickerSection: some View {
-        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-            ZStack {
-                // Background circle (slightly smaller)
-                Circle()
-                    .fill(colorScheme == .dark ? Color(.systemGray5).opacity(0.8) : Color(.systemGray6))
-                    .frame(width: 110, height: 110) // was 120 -> 100
-                    .overlay(
-                        Circle()
-                            .stroke(borderColor, lineWidth: borderWidth)
-                    )
+            VStack(spacing: 24) {
+                FloatingInput(
+                    title: "Full Name",
+                    text: $fullName,
+                    icon: "person.fill",
+                    context: context
+                )
+                .focused($focusedField, equals: .fullName)
+                .onSubmit { focusedField = .email }
                 
-                // Profile Image or Placeholder
-                ZStack {
-                    if let profileImage {
-                        Image(uiImage: profileImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } else {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 48)) 
-                            .foregroundColor(.secondary)
+                FloatingInput(
+                    title: "Email Address",
+                    text: $email,
+                    icon: "envelope.fill",
+                    context: context
+                )
+                .focused($focusedField, equals: .email)
+                .onSubmit { handleNextStep() }
+            }
+        }
+        .padding(.horizontal, 32)
+    }
+    
+    // MARK: - 🎞️ STEP 2: CREDENTIALS
+    var credentialsStep: some View {
+        VStack(alignment: .leading, spacing: 32) {
+            Text("Set Your Password")
+                .font(.system(size: 48, weight: .black, design: .default))
+                .tracking(-1)
+                .foregroundStyle(.white)
+                .mask(LinearGradient(colors: [.white, .white.opacity(0.5)], startPoint: .top, endPoint: .bottom))
+            
+            VStack(spacing: 24) {
+                FloatingInput(
+                    title: "Password",
+                    text: $password,
+                    icon: "lock.fill",
+                    isSecure: true,
+                    context: context
+                )
+                .focused($focusedField, equals: .password)
+                .onSubmit { focusedField = .confirmPassword }
+                
+                FloatingInput(
+                    title: "Confirm Password",
+                    text: $confirmPassword,
+                    icon: "lock.shield.fill",
+                    isSecure: true,
+                    context: context
+                )
+                .focused($focusedField, equals: .confirmPassword)
+                .onSubmit { handleNextStep() }
+            }
+        }
+        .padding(.horizontal, 32)
+    }
+    
+    // MARK: - 🎞️ STEP 3: CLINICAL PROFILE
+    var profileStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 32) {
+                Text("Your Profile")
+                    .font(.system(size: 48, weight: .black, design: .default))
+                    .tracking(-1)
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                // Photo Picker (Holographic)
+                HStack {
+                    Spacer()
+                    PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                        ZStack {
+                            Circle()
+                                .strokeBorder(
+                                    AngularGradient(colors: [.cyan, .purple, .blue, .cyan], center: .center),
+                                    lineWidth: 2
+                                )
+                                .background(.ultraThinMaterial, in: Circle())
+                                .frame(width: 100, height: 100)
+                            
+                            if let profileImage {
+                                Image(uiImage: profileImage)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 96, height: 96)
+                                    .clipShape(Circle())
+                            } else {
+                                Image(systemName: "camera.aperture")
+                                    .font(.system(size: 30))
+                                    .foregroundStyle(.white.opacity(0.6))
+                            }
+                            
+                            Circle()
+                                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                                .frame(width: 110, height: 110)
+                                .scaleEffect(isSigningUp ? 1.2 : 1.0)
+                                .opacity(isSigningUp ? 0 : 1)
+                                .animation(.easeOut(duration: 1).repeatForever(autoreverses: false), value: isSigningUp)
+                        }
                     }
+                    Spacer()
                 }
-                .frame(width: 110, height: 110) // match circle size
-                .clipShape(Circle())
                 
-                // Edit Icon Overlay
-                ZStack {
-                    Circle()
-                        .fill(Color.accentColor)
-                    Image(systemName: "pencil")
-                        .font(.system(size: 14, weight: .bold)) // slightly smaller
-                        .foregroundColor(.white)
-                }
-                .frame(width: 32, height: 32) // was 34 -> 32
-                .overlay(
-                    Circle()
-                        .stroke(adaptiveSystemBackground, lineWidth: 2)
+                // Role Picker
+                ModernMenuPicker(
+                    title: "Role",
+                    selection: Binding(get: { selectedRole.title }, set: { _ in }),
+                    options: UserProfileRole.allPredefined.map { $0.title },
+                    onSelect: { title in
+                        if let role = UserProfileRole.allPredefined.first(where: { $0.title == title }) {
+                            selectedRole = role
+                        }
+                    }
                 )
-                .offset(x: 34, y: 34)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private var fullNameField: some View {
-        SignUpTextField(
-            text: $fullName,
-            prompt: "Full Name",
-            systemImageName: "person.fill",
-            isFocused: $focusedField,
-            focusCase: .fullName,
-            colorScheme: colorScheme
-        )
-        .textContentType(.name)
-        .autocapitalization(.words)
-        .submitLabel(.next)
-        .onSubmit { focusedField = .email }
-    }
-    
-    private var emailField: some View {
-        SignUpTextField(
-            text: $email,
-            prompt: "Email Address",
-            systemImageName: "envelope.fill",
-            isFocused: $focusedField,
-            focusCase: .email,
-            colorScheme: colorScheme
-        )
-        .keyboardType(.emailAddress)
-        .textContentType(.emailAddress)
-        .autocapitalization(.none)
-        .submitLabel(.next)
-        .onSubmit { focusedField = .password }
-    }
-    
-    private var passwordField: some View {
-        SignUpTextField(
-            text: $password,
-            isSecure: !isPasswordVisible,
-            prompt: "Password",
-            systemImageName: "lock.fill",
-            isFocused: $focusedField,
-            focusCase: .password,
-            colorScheme: colorScheme
-        ) {
-            Button {
-                isPasswordVisible.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
-                    .foregroundStyle(.secondary)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 20, height: 20)
-            }
-        }
-        .textContentType(.newPassword)
-        .submitLabel(.next)
-        .onSubmit { focusedField = .confirmPassword }
-    }
-    
-    private var confirmPasswordField: some View {
-        SignUpTextField(
-            text: $confirmPassword,
-            isSecure: !isPasswordVisible,
-            prompt: "Confirm Password",
-            systemImageName: "lock.fill",
-            isFocused: $focusedField,
-            focusCase: .confirmPassword,
-            colorScheme: colorScheme
-        )
-        .textContentType(.newPassword)
-        .submitLabel(.done)
-        .onSubmit(performSignUp)
-    }
-    
-    // ✅ NEW: Gender picker
-    @ViewBuilder
-    private var genderPicker: some View {
-        Menu {
-            ForEach(Gender.allCases) { genderOption in
-                Button(genderOption.rawValue) {
-                    selectedGender = genderOption
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "person.2.circle.fill")
-                    .foregroundStyle(iconColor)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 20)
                 
-                Text(selectedGender.rawValue)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(fieldBackgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(fieldBorderColor, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        }
-    }
-    
-    // ✅ NEW: Optional DOB section
-    @ViewBuilder
-    private var dobSection: some View {
-        VStack(spacing: 12) {
-            Toggle(isOn: $provideDOB.animation(.spring(response: 0.4, dampingFraction: 0.8))) {
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar.badge.plus")
-                        .foregroundStyle(.secondary)
-                        .font(.system(size: 14))
-                    Text("Provide Date of Birth (Optional)")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(SwitchToggleStyle(tint: .accentColor))
-            .padding(.horizontal, 4)
-            
-            if provideDOB {
-                DatePicker(
-                    "Birthday",
-                    selection: $dateOfBirth,
-                    in: ...Date.now,
-                    displayedComponents: .date
+                // Language Picker
+                ModernMenuPicker(
+                    title: "Language",
+                    selection: Binding(get: { selectedNativeLanguage.displayName }, set: { _ in }),
+                    options: NativeLanguage.allCases.map { $0.displayName },
+                    onSelect: { name in
+                        if let lang = NativeLanguage.allCases.first(where: { $0.displayName == name }) {
+                            selectedNativeLanguage = lang
+                        }
+                    }
                 )
-                .datePickerStyle(.compact)
-                .transition(.asymmetric(
-                    insertion: .scale.combined(with: .opacity),
-                    removal: .opacity
-                ))
-                .padding(.horizontal, 4)
-            }
-        }
-    }
-    
-    // ✅ NEW: Language picker component
-    @ViewBuilder
-    private var languagePicker: some View {
-        Menu {
-            ForEach(NativeLanguage.allCases) { language in
-                Button(language.displayName) {
-                    selectedNativeLanguage = language
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                
+                // Gender Picker
+                ModernMenuPicker(
+                    title: "Gender",
+                    selection: Binding(get: { selectedGender.rawValue }, set: { _ in }),
+                    options: Gender.allCases.map { $0.rawValue },
+                    onSelect: { val in
+                        if let gender = Gender.allCases.first(where: { $0.rawValue == val }) {
+                            selectedGender = gender
+                        }
+                    }
+                )
+                
+                // DOB Toggle
+                Toggle(isOn: $provideDOB.animation()) {
+                    Text("Include Date of Birth")
+                        .font(.system(size: 12, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.8))
+                }
+                .tint(.cyan)
+                .padding(.vertical, 8)
+                
+                if provideDOB {
+                    DatePicker("", selection: $dateOfBirth, displayedComponents: .date)
+                        .datePickerStyle(.graphical)
+                        .colorScheme(.dark)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(.ultraThinMaterial)
+                        )
                 }
             }
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "globe")
-                    .foregroundStyle(iconColor)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 20)
-                
-                Text(selectedNativeLanguage.displayName)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(fieldBackgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(fieldBorderColor, lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 32)
+            .padding(.bottom, 100) // Space for button
         }
     }
     
-    private var rolePicker: some View {
-        PremiumRolePicker(
-            selectedRole: $selectedRole,
-            colorScheme: colorScheme
-        )
-    }
+    // MARK: - 🧠 LOGIC
     
-    @ViewBuilder
-    private var errorSection: some View {
-        if let errorMessage {
-            HStack(spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.red)
-                    .font(.system(size: 14))
-                
-                Text(errorMessage)
-                    .font(.callout)
-                    .foregroundStyle(.red)
-                
-                Spacer()
+    private func handleNextStep() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        
+        switch currentStep {
+        case 0:
+            if fullName.isEmpty || email.isEmpty {
+                showError("Identity details required")
+            } else {
+                withAnimation { currentStep = 1 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(errorBackgroundColor)
-            .overlay(errorBorder)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
-            .transition(.opacity.combined(with: .scale(scale: 0.95, anchor: .top)))
+        case 1:
+            if password.isEmpty || confirmPassword.isEmpty {
+                showError("Credentials required")
+            } else if password != confirmPassword {
+                showError("Passwords do not match")
+            } else {
+                withAnimation { currentStep = 2 }
+            }
+        case 2:
+            performSignUp()
+        default: break
         }
     }
     
-    private var errorBackgroundColor: Color {
-        colorScheme == .dark ? Color.red.opacity(0.15) : Color.red.opacity(0.08)
-    }
-    
-    private var errorBorder: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .stroke(Color.red.opacity(0.3), lineWidth: 1)
-    }
-    
-    private var createAccountButton: some View {
-        Button(action: performSignUp) {
-            HStack(spacing: 12) {
-                if isSigningUp {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(0.9)
-                } else {
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                    
-                    Text("Create My Account")
-                        .font(.headline.weight(.semibold))
-                }
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 56)
-            .foregroundStyle(.white)
-            .background(buttonBackgroundGradient)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: buttonShadowColor, radius: 8, y: 4)
-            .scaleEffect(isSigningUp ? 0.98 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSigningUp)
+    private func showError(_ msg: String) {
+        withAnimation { errorMessage = msg }
+        UINotificationFeedbackGenerator().notificationOccurred(.error)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            withAnimation { errorMessage = nil }
         }
-        .disabled(isSigningUp || email.isEmpty || password.isEmpty || fullName.isEmpty)
-        .opacity((isSigningUp || email.isEmpty || password.isEmpty || fullName.isEmpty) ? 0.7 : 1.0)
     }
-    
-    private var buttonBackgroundGradient: LinearGradient {
-        LinearGradient(
-            colors: [Color.accentColor, Color.cyan],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-    }
-    
-    private var buttonShadowColor: Color {
-        colorScheme == .dark ? Color.accentColor.opacity(0.2) : Color.accentColor.opacity(0.3)
-    }
-    
-    private var signInLink: some View {
-        HStack(spacing: 6) {
-            Text("Already have an account?")
-                .foregroundStyle(.secondary)
-            Button("Sign In") {
-                dismiss() // Go back to the login screen
-            }
-            .font(.callout.weight(.semibold))
-            .foregroundStyle(Color.accentColor)
-        }
-        .font(.callout)
-    }
-
-    // MARK: - Logic (Copied from your original file)
     
     private func handlePhotoSelection() {
         Task {
@@ -541,19 +357,8 @@ struct SignUpView: View {
     }
     
     private func performSignUp() {
-        // Prevent duplicate submissions
         guard !isSigningUp else { return }
-        
-        // Client-side validation first — fast feedback.
-        guard validateInputs() else { return }
-        
-        // Haptic feedback acknowledging the action
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
         isSigningUp = true
-        errorMessage = nil
-        hasError = false
-        focusedField = nil
         
         Task {
             do {
@@ -570,312 +375,265 @@ struct SignUpView: View {
                     
                     newUser.roleTitle = selectedRole.title
                     newUser.gender = selectedGender
-                    if provideDOB {
-                        newUser.dateOfBirth = dateOfBirth
-                    }
-                    // ✅ FIXED: Direct assignment, no optional
+                    if provideDOB { newUser.dateOfBirth = dateOfBirth }
                     newUser.nativeLanguage = selectedNativeLanguage
                     
                     try? authService.modelContext.save()
                 }
                 
-            } catch let authError as AuthError {
-                await MainActor.run {
-                    self.errorMessage = authError.localizedDescription
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.hasError = true
-                    }
-                    // error haptic
-                    self.errorHaptic.notificationOccurred(.error)
-                    self.isSigningUp = false
-                }
+                // Success handled by Auth state change
             } catch {
                 await MainActor.run {
-                    self.errorMessage = "An unknown error occurred."
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.hasError = true
-                    }
-                    self.errorHaptic.notificationOccurred(.error)
-                    self.isSigningUp = false
+                    showError(error.localizedDescription)
+                    isSigningUp = false
                 }
             }
         }
     }
-    
-    /// Validate sign-up inputs locally. Shows immediate UI feedback (shake + haptic) and focuses the offending field.
-    private func validateInputs() -> Bool {
-        let trimmedName = fullName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPassword = password.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedConfirm = confirmPassword.trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Full name required
-        if trimmedName.isEmpty {
-            withAnimation {
-                self.errorMessage = "Please enter your full name."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.warning)
-            focusedField = .fullName
-            return false
-        }
-        
-        // Email required
-        if trimmedEmail.isEmpty {
-            withAnimation {
-                self.errorMessage = "Please enter your email."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.warning)
-            focusedField = .email
-            return false
-        }
-        
-        // Basic email format
-        let emailPredicate = NSPredicate(format: "SELF MATCHES[c] %@", "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}")
-        if !emailPredicate.evaluate(with: trimmedEmail) {
-            withAnimation {
-                self.errorMessage = "Please enter a valid email address."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.error)
-            focusedField = .email
-            return false
-        }
-        
-        // Password required
-        if trimmedPassword.isEmpty {
-            withAnimation {
-                self.errorMessage = "Please enter a password."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.warning)
-            focusedField = .password
-            return false
-        }
-        
-        // Minimum password length
-        if trimmedPassword.count < 6 {
-            withAnimation {
-                self.errorMessage = "Password must be at least 6 characters."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.error)
-            focusedField = .password
-            return false
-        }
-        
-        // Confirm password matches
-        if trimmedConfirm != trimmedPassword {
-            withAnimation {
-                self.errorMessage = "Passwords do not match."
-                self.hasError = true
-            }
-            errorHaptic.notificationOccurred(.error)
-            focusedField = .confirmPassword
-            return false
-        }
-        
-        // Success: clear any prior error state
-        withAnimation { self.hasError = false }
-        self.errorMessage = nil
-        return true
-    }
-    
-    private func triggerErrorHaptic() {
-        // kept for callers that use it — default to error
-        errorHaptic.notificationOccurred(.error)
-    }
 }
 
-// MARK: - Premium Role Picker (New Component)
-
-struct PremiumRolePicker: View {
-    @Binding var selectedRole: UserProfileRole
-    var colorScheme: ColorScheme
-    
-    @State private var isFieldFocused = false
-    
-    private var fieldBackgroundColor: Color {
-        if colorScheme == .dark {
-            return isFieldFocused ? Color(.systemGray5).opacity(0.8) : Color(.systemGray6).opacity(0.6)
-        } else {
-            return isFieldFocused ? Color(.systemBackground) : Color(.systemGray6).opacity(0.5)
-        }
-    }
-    
-    private var fieldBorderColor: Color {
-        if isFieldFocused {
-            return Color.accentColor
-        } else if colorScheme == .dark {
-            return Color.white.opacity(0.1)
-        } else {
-            return Color.black.opacity(0.08)
-        }
-    }
-    
-    private var iconColor: Color {
-        isFieldFocused ? Color.accentColor : Color.secondary
-    }
+// MARK: - 🎨 COMPONENT: Atmospheric Background (Optimized)
+struct AtmosphericBackground: View {
+    var intensity: Double // Not used, kept for compatibility
     
     var body: some View {
-        Menu {
-            ForEach(UserProfileRole.allPredefined) { role in
-                Button(role.title) {
-                    selectedRole = role
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        // Optimized: Static gradient background with mesh gradient effect
+        ZStack {
+            // Base color
+            Color(red: 0.01, green: 0.015, blue: 0.03)
+            
+            // Static gradient orbs using GeometryReader for positioning
+            GeometryReader { geo in
+                ZStack {
+                    // Orb 1: Elegant cyan gradient
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.15, green: 0.75, blue: 0.85).opacity(0.22),
+                                    Color(red: 0.08, green: 0.55, blue: 0.75).opacity(0.14),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 200
+                            )
+                        )
+                        .frame(width: 400, height: 400)
+                        .position(x: geo.size.width * 0.5, y: geo.size.height * 0.4)
+                    
+                    // Orb 2: Rich purple gradient
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.55, green: 0.25, blue: 0.85).opacity(0.20),
+                                    Color(red: 0.35, green: 0.08, blue: 0.65).opacity(0.12),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 220
+                            )
+                        )
+                        .frame(width: 440, height: 440)
+                        .position(x: geo.size.width * 0.7, y: geo.size.height * 0.7)
+                    
+                    // Orb 3: Sophisticated blue gradient
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.25, green: 0.45, blue: 0.85).opacity(0.18),
+                                    Color(red: 0.12, green: 0.25, blue: 0.65).opacity(0.10),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 180
+                            )
+                        )
+                        .frame(width: 360, height: 360)
+                        .position(x: geo.size.width * 0.3, y: geo.size.height * 0.6)
+                    
+                    // Orb 4: Warm gold gradient accent
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.75, green: 0.65, blue: 0.35).opacity(0.12),
+                                    Color(red: 0.55, green: 0.45, blue: 0.15).opacity(0.08),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 160
+                            )
+                        )
+                        .frame(width: 320, height: 320)
+                        .position(x: geo.size.width * 0.8, y: geo.size.height * 0.3)
+                    
+                    // Orb 5: Premium magenta accent
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    Color(red: 0.65, green: 0.20, blue: 0.75).opacity(0.15),
+                                    Color(red: 0.45, green: 0.10, blue: 0.55).opacity(0.09),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 190
+                            )
+                        )
+                        .frame(width: 380, height: 380)
+                        .position(x: geo.size.width * 0.2, y: geo.size.height * 0.2)
                 }
             }
-        } label: {
-            HStack(spacing: 16) {
-                Image(systemName: "graduationcap.fill")
-                    .foregroundStyle(iconColor)
-                    .font(.system(size: 16, weight: .medium))
-                    .frame(width: 20)
-                
-                Text(selectedRole.title)
-                    .font(.callout)
-                    .foregroundStyle(.primary)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
-            .background(fieldBackgroundColor)
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(fieldBorderColor, lineWidth: isFieldFocused ? 2 : 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .animation(.easeOut(duration: 0.15), value: isFieldFocused)
         }
-        .onTapGesture {
-            isFieldFocused.toggle()
-        }
+        .blur(radius: 85)
+        .ignoresSafeArea()
     }
 }
 
-// MARK: - SignUp-specific text field (avoids name collision with LoginView.PremiumTextField)
-
-struct SignUpTextField<TrailingContent: View>: View {
+// MARK: - 🎨 COMPONENT: Floating Input
+struct FloatingInput: View {
+    let title: String
     @Binding var text: String
+    let icon: String
     var isSecure: Bool = false
-    var prompt: String
-    var systemImageName: String
+    @ObservedObject var context: SignUpInteractionContext
     
-    @FocusState.Binding var isFocused: SignUpView.Field?
-    var focusCase: SignUpView.Field
-    var colorScheme: ColorScheme
+    @FocusState private var isFocused: Bool
     
-    var trailingContent: () -> TrailingContent
-    
-    init(
-        text: Binding<String>,
-        isSecure: Bool = false,
-        prompt: String,
-        systemImageName: String,
-        isFocused: FocusState<SignUpView.Field?>.Binding,
-        focusCase: SignUpView.Field,
-        colorScheme: ColorScheme,
-        @ViewBuilder trailingContent: @escaping () -> TrailingContent = { EmptyView() }
-    ) {
-        self._text = text
-        self.isSecure = isSecure
-        self.prompt = prompt
-        self.systemImageName = systemImageName
-        self._isFocused = isFocused
-        self.focusCase = focusCase
-        self.colorScheme = colorScheme
-        self.trailingContent = trailingContent
-    }
-    
-    private var isFieldFocused: Bool {
-        isFocused == focusCase
-    }
-    
-    private var fieldBackgroundColor: Color {
-        if colorScheme == .dark {
-            return isFieldFocused ? Color(.systemGray5).opacity(0.8) : Color(.systemGray6).opacity(0.6)
-        } else {
-            return isFieldFocused ? Color(.systemBackground) : Color(.systemGray6).opacity(0.5)
-        }
-    }
-    
-    private var fieldBorderColor: Color {
-        if isFieldFocused {
-            return Color.accentColor
-        } else if colorScheme == .dark {
-            return Color.white.opacity(0.1)
-        } else {
-            return Color.black.opacity(0.08)
-        }
-    }
-    
-    private var iconColor: Color {
-        if isFieldFocused {
-            return Color.accentColor
-        } else {
-            return Color.secondary
-        }
-    }
-
     var body: some View {
-        HStack(spacing: 16) {
-            Image(systemName: systemImageName)
-                .foregroundStyle(iconColor)
-                .font(.system(size: 16, weight: .medium))
-                .frame(width: 20)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Image(systemName: icon)
+                    .font(.caption)
+                    .foregroundStyle(.white.opacity(isFocused ? 1 : 0.5))
+                Text(title)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(isFocused ? 1 : 0.5))
+            }
             
-            Group {
+            ZStack(alignment: .bottom) {
                 if isSecure {
-                    SecureField(prompt, text: $text)
+                    SecureField("", text: $text)
+                        .focused($isFocused)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white)
                 } else {
-                    TextField(prompt, text: $text)
+                    TextField("", text: $text)
+                        .focused($isFocused)
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(.white)
+                }
+                
+                Rectangle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(height: 1)
+                
+                Rectangle()
+                    .fill(Color.cyan)
+                    .frame(height: 2)
+                    .scaleEffect(x: isFocused ? 1 : 0, anchor: .leading)
+                    .animation(.spring(response: 0.3), value: isFocused)
+            }
+            .padding(.bottom, 8)
+        }
+        .onChange(of: text) { _, _ in context.registerInteraction() }
+    }
+}
+
+// MARK: - 🎨 COMPONENT: Modern Menu Picker
+struct ModernMenuPicker: View {
+    let title: String
+    @Binding var selection: String
+    let options: [String]
+    let onSelect: (String) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.6))
+            
+            Menu {
+                ForEach(options, id: \.self) { option in
+                    Button(option) {
+                        onSelect(option)
+                    }
+                }
+            } label: {
+                HStack {
+                    Text(selection)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(.white)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.5))
+                }
+                .padding()
+                .background(.ultraThinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                )
+            }
+        }
+    }
+}
+
+// MARK: - 🎨 COMPONENT: Primary Action Button
+struct PrimaryActionButton: View {
+    let title: String
+    let isLoading: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(Color.white)
+                    .shadow(color: .white.opacity(0.2), radius: 20)
+                
+                if isLoading {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    HStack {
+                        Text(title)
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .tracking(1)
+                        
+                        Image(systemName: "arrow.right")
+                            .font(.caption.weight(.black))
+                    }
+                    .foregroundStyle(.black)
                 }
             }
-            .font(.callout)
-            .focused($isFocused, equals: focusCase)
-            
-            trailingContent()
+            .frame(height: 56)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(fieldBackgroundColor)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(fieldBorderColor, lineWidth: isFieldFocused ? 2 : 1)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .animation(.easeOut(duration: 0.15), value: isFieldFocused)
-        .contentShape(Rectangle()) // ensure full row is tappable
-        .onTapGesture {
-            isFocused = focusCase
-        }
+        .buttonStyle(ScaleButtonStyle())
+        .disabled(isLoading)
     }
 }
 
-// MARK: - Preview
-
-#Preview("Light Mode") {
-    let authService = AuthService(modelContext: try! ModelContainer(for: User.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true)).mainContext)
-    
-    NavigationStack {
-        SignUpView()
-            .environmentObject(authService)
+struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
     }
-    .preferredColorScheme(.light)
 }
 
-#Preview("Dark Mode") {
-    let authService = AuthService(modelContext: try! ModelContainer(for: User.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true)).mainContext)
-    
-    NavigationStack {
-        SignUpView()
-            .environmentObject(authService)
-    }
-    .preferredColorScheme(.dark)
+#Preview {
+    SignUpView()
+        .environmentObject(AuthService(modelContext: try! ModelContainer(for: User.self, configurations: ModelConfiguration(isStoredInMemoryOnly: true)).mainContext))
 }

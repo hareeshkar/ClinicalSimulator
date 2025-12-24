@@ -58,13 +58,13 @@ struct DashboardView: View {
     }
     
     private var averageScore: Int {
-        let scores = completedSessions.compactMap { $0.score }
+        let scores = userCompletedSessions.compactMap { $0.score }
         guard !scores.isEmpty else { return 0 }
         return Int((scores.reduce(0, +) / Double(scores.count)).rounded())
     }
     
     private var recentlyCompletedSessions: [StudentSession] {
-        Array(completedSessions.prefix(3))
+        Array(userCompletedSessions.prefix(3))
     }
     
     // ✅ UPDATE COMPUTED PROPERTIES TO FILTER BY USER
@@ -138,16 +138,16 @@ struct DashboardView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 48) {
                     headerView
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: contentHasAppeared)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.05), value: contentHasAppeared)
                     
                     statsSection
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.2), value: contentHasAppeared)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.1), value: contentHasAppeared)
                     
                     continueSection
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.3), value: contentHasAppeared)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.15), value: contentHasAppeared)
                     
                     quickActionsSection
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.4), value: contentHasAppeared)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.2), value: contentHasAppeared)
                     
                     recommendedSection
                         .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.5), value: contentHasAppeared)

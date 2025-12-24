@@ -2,10 +2,10 @@ import SwiftUI
 import SwiftData
 import UIKit
 
-// MARK: - Sort Options Enum (Unchanged)
+// MARK: - 🧠 SORTING LOGIC (Unchanged Data Model)
 enum SortOption: String, CaseIterable, Identifiable {
-    case latestToOld = "Most Recent" // Renamed for clarity
-    case oldestToLatest = "Oldest First" // Renamed for clarity
+    case latestToOld = "Most Recent"
+    case oldestToLatest = "Oldest First"
     case aToZ = "A-Z"
     case zToA = "Z-A"
     case highestScore = "Highest Score"
@@ -15,17 +15,14 @@ enum SortOption: String, CaseIterable, Identifiable {
     
     var icon: String {
         switch self {
-        case .latestToOld, .oldestToLatest:
-            return "calendar"
-        case .aToZ, .zToA:
-            return "textformat.abc"
-        case .highestScore, .lowestScore:
-            return "chart.bar"
+        case .latestToOld, .oldestToLatest: return "calendar"
+        case .aToZ, .zToA: return "textformat.abc"
+        case .highestScore, .lowestScore: return "chart.bar"
         }
     }
 }
 
-// MARK: - ReportsView (Completely Redesigned)
+// MARK: - 🏆 LIQUID GLASS REPORTS VIEW
 struct ReportsView: View {
     @Query private var allCases: [PatientCase]
     @Query(filter: #Predicate<StudentSession> { $0.isCompleted })
@@ -35,6 +32,7 @@ struct ReportsView: View {
     @Environment(User.self) private var currentUser
     
     @State private var sortOption: SortOption = .latestToOld
+    @State private var scrollOffset: CGFloat = 0
 
     // MARK: - Computed Properties
     private var userCompletedSessions: [StudentSession] {
@@ -49,24 +47,17 @@ struct ReportsView: View {
 
     private var sortedCaseSessionPairs: [(patientCase: PatientCase, session: StudentSession)] {
         let caseSessionMap = Dictionary(uniqueKeysWithValues: allCases.map { ($0.caseId, $0) })
-        
         return userCompletedSessions.compactMap { session -> (PatientCase, StudentSession)? in
             guard let patientCase = caseSessionMap[session.caseId] else { return nil }
             return (patientCase, session)
         }.sorted { lhs, rhs in
             switch sortOption {
-            case .latestToOld:
-                return completionDate(for: lhs.session) > completionDate(for: rhs.session)
-            case .oldestToLatest:
-                return completionDate(for: lhs.session) < completionDate(for: rhs.session)
-            case .aToZ:
-                return lhs.patientCase.title < rhs.patientCase.title
-            case .zToA:
-                return lhs.patientCase.title > rhs.patientCase.title
-            case .highestScore:
-                return (lhs.session.score ?? 0) > (rhs.session.score ?? 0)
-            case .lowestScore:
-                return (lhs.session.score ?? 0) < (rhs.session.score ?? 0)
+            case .latestToOld: return completionDate(for: lhs.session) > completionDate(for: rhs.session)
+            case .oldestToLatest: return completionDate(for: lhs.session) < completionDate(for: rhs.session)
+            case .aToZ: return lhs.patientCase.title < rhs.patientCase.title
+            case .zToA: return lhs.patientCase.title > rhs.patientCase.title
+            case .highestScore: return (lhs.session.score ?? 0) > (rhs.session.score ?? 0)
+            case .lowestScore: return (lhs.session.score ?? 0) < (rhs.session.score ?? 0)
             }
         }
     }
@@ -75,78 +66,144 @@ struct ReportsView: View {
         return session.messages.map { $0.timestamp }.max() ?? session.performedActions.map { $0.timestamp }.max() ?? .distantPast
     }
 
-    // MARK: - Main Body
+    // MARK: - BODY
     var body: some View {
         NavigationStack(path: $navigationManager.reportsPath) {
-            ScrollView {
-                VStack(spacing: 24) {
-                    headerView
-                    
-                    if sortedCaseSessionPairs.isEmpty {
-                        ContentUnavailableView(
-                            "No Reports Yet",
-                            systemImage: "doc.text.magnifyingglass",
-                            description: Text("Complete a simulation to see your performance reports here.")
-                        )
-                        .padding(.top, 50)
-                    } else {
-                        reportsList
+            ZStack {
+                // Layer 0: Clinical Fluid Background
+                ClinicalAmbientBackground(score: averageScore)
+                    .ignoresSafeArea()
+                
+                // Layer 1: Scroll Content
+                ScrollView {
+                    VStack(spacing: 24) {
+                        // Scroll Offset Reader
+                        GeometryReader { proxy in
+                            Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named("scroll")).minY)
+                        }
+                        .frame(height: 0)
+                        
+                        // Header Cluster
+                        headerView
+                            .opacity(1.0 - (max(0, -scrollOffset) / 150.0)) // Fade out on scroll
+                            .blur(radius: max(0, -scrollOffset) / 20.0) // Blur on scroll
+                            .scaleEffect(max(0.8, 1.0 - (max(0, -scrollOffset) / 500.0))) // Shrink slightly
+                        
+                        // Sort & Filter Bar (Sticky Logic)
+                        glassSortBar
+                            .zIndex(1)
+                        
+                        // Content List
+                        if sortedCaseSessionPairs.isEmpty {
+                            emptyStateView
+                        } else {
+                            reportsList
+                        }
                     }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 20) // Initial top padding
+                    .padding(.bottom, 100) // Space for tab bar
                 }
-                .padding(.horizontal)
+                .coordinateSpace(name: "scroll")
+                .onPreferenceChange(ScrollOffsetKey.self) { value in
+                    scrollOffset = value
+                }
             }
-            .background(Color(.systemGroupedBackground))
-            .navigationTitle("Performance Reports")
-            .navigationBarHidden(true) // Hide the default bar to use our custom header
+            .navigationTitle("Clinical Performance")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: PatientCase.self) { patientCase in
                 CaseHistoryView(patientCase: patientCase)
             }
         }
     }
 
-    // MARK: - ViewBuilder Sub-components
+    // MARK: - VIEW COMPONENTS
     
     @ViewBuilder
     private var headerView: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Performance Reports")
-                .font(.largeTitle.bold())
-                .padding(.top, 57)  // Updated to add 5x pt top padding to push down
-
-            Text("Review detailed analytics from your completed simulations to track your progress and identify areas for improvement.")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-            
-            HStack(spacing: 16) {
-                AverageScoreCardView(score: averageScore)
+        VStack(spacing: 30) {
+            // "Living" Average Score Ring
+            ZStack {
+                // Outer Glow
+                Circle()
+                    .fill(scoreColor(for: averageScore).opacity(0.2))
+                    .frame(width: 180, height: 180)
+                    .blur(radius: 35)
                 
-                Spacer() // Add spacer to push the menu to the right
+                // Physics-based Fluid Ring
+                FluidScoreRing(score: averageScore, color: scoreColor(for: averageScore))
+                    .frame(width: 140, height: 140)
                 
-                Menu {
-                    ForEach(SortOption.allCases) { option in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            sortOption = option
-                        } label: {
-                            Label(option.rawValue, systemImage: sortOption == option ? "checkmark" : "")
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.up.arrow.down")
-                        Text(sortOption.rawValue)
-                        Image(systemName: "chevron.up.chevron.down")
-                    }
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial)
-                    .clipShape(Capsule())
+                VStack(spacing: 4) {
+                    Text("\(averageScore)")
+                        .font(.system(size: 48, weight: .bold, design: .rounded))
+                        .foregroundStyle(scoreColor(for: averageScore))
+                        // Liquid Glass numeric transition
+                        .contentTransition(.numericText(value: Double(averageScore)))
+                    
+                    Text("AVERAGE")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .tracking(2)
                 }
             }
-            .frame(height: 120)
+            
+            VStack(spacing: 8) {
+                Text("Performance Analytics")
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                
+                Text("Review your diagnostic reasoning and clinical efficiency across \(userCompletedSessions.count) completed simulations.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 20)
+            }
         }
+        .padding(.top, 20)
+    }
+    
+    @ViewBuilder
+    private var glassSortBar: some View {
+        HStack {
+            Text("SESSION LOG")
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .tracking(1)
+            
+            Spacer()
+            
+            Menu {
+                ForEach(SortOption.allCases) { option in
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                            sortOption = option
+                        }
+                    } label: {
+                        Label(option.rawValue, systemImage: option.icon)
+                    }
+                }
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .font(.caption2)
+                    Text(sortOption.rawValue)
+                        .font(.caption.weight(.semibold))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.05), radius: 5, y: 2)
+            }
+        }
+        .padding(.bottom, 10)
     }
     
     @ViewBuilder
@@ -154,101 +211,228 @@ struct ReportsView: View {
         LazyVStack(spacing: 16) {
             ForEach(sortedCaseSessionPairs, id: \.session.sessionId) { pair in
                 NavigationLink(value: pair.patientCase) {
-                    CaseListItemView(
-                        patientCase: pair.patientCase,
-                        session: pair.session,
-                        action: .review
-                    )
+                    GlassReportCard(patientCase: pair.patientCase, session: pair.session)
                 }
-                .buttonStyle(EnhancedCardButtonStyle())
+                .buttonStyle(ScaleButtonStyle())
             }
         }
-        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: sortOption)
+        // Animate reordering
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: sortOption)
     }
-
-    private func mostRecentSession(for caseId: String) -> StudentSession? {
-        userCompletedSessions.first { $0.caseId == caseId }
+    
+    @ViewBuilder
+    private var emptyStateView: some View {
+        VStack(spacing: 20) {
+            Image(systemName: "doc.text.magnifyingglass")
+                .font(.system(size: 50))
+                .foregroundStyle(.secondary.opacity(0.5))
+            
+            Text("No Clinical Data")
+                .font(.headline)
+                .foregroundStyle(.primary)
+            
+            Text("Complete a simulation to generate performance analytics.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.top, 40)
+        .frame(maxWidth: .infinity)
+        .padding(40)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24))
+    }
+    
+    private func scoreColor(for score: Int) -> Color {
+        switch score {
+        case 90...100: return .teal
+        case 75..<90: return .blue
+        case 60..<75: return .orange
+        default: return .red
+        }
     }
 }
 
-// MARK: - Average Score Card View
-struct AverageScoreCardView: View {
-    let score: Int
-    @State private var animatedProgress: Double = 0
+// MARK: - 🧬 COMPONENT: GLASS REPORT CARD
+struct GlassReportCard: View {
+    let patientCase: PatientCase
+    let session: StudentSession
     
     private var scoreColor: Color {
-        score > 80 ? .green : score > 60 ? .orange : .red
+        guard let score = session.score else { return .gray }
+        switch score {
+        case 90...100: return .teal
+        case 75..<90: return .blue
+        case 60..<75: return .orange
+        default: return .red
+        }
+    }
+    
+    private var specialtyColor: Color {
+        SpecialtyDetailsProvider.color(for: patientCase.specialty)
     }
     
     var body: some View {
-        ZStack {
-            Circle()
-                .stroke(scoreColor.opacity(0.15), lineWidth: 8)
-
-            Circle()
-                .trim(from: 0, to: animatedProgress)
-                .stroke(scoreColor, style: StrokeStyle(lineWidth: 8, lineCap: .round))
-                .rotationEffect(.degrees(-90))
+        HStack(spacing: 16) {
+            // Score Pill (Vertical Layout)
+            VStack(spacing: 2) {
+                Text("\(Int(session.score ?? 0))")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundStyle(scoreColor)
+                
+                Text("%")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(scoreColor.opacity(0.8))
+            }
+            .frame(width: 50, height: 50)
+            .background(
+                scoreColor.opacity(0.1),
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(scoreColor.opacity(0.2), lineWidth: 1)
+            )
             
-            VStack {
-                Text("\(score)")
-                    .font(.title.bold().monospacedDigit())
-                Text("AVG")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.secondary)
+            // Case Info
+            VStack(alignment: .leading, spacing: 6) {
+                Text(patientCase.title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                
+                HStack(spacing: 8) {
+                    Label(patientCase.specialty, systemImage: SpecialtyDetailsProvider.details(for: patientCase.specialty).iconName)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(specialtyColor)
+                    
+                    Text("•")
+                        .foregroundStyle(.secondary)
+                    
+                    Text(patientCase.difficulty.uppercased())
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.secondary.opacity(0.1), in: Capsule())
+                }
             }
+            
+            Spacer()
+            
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(.secondary.opacity(0.5))
         }
-        .padding(8)
-        .background(.regularMaterial)
-        .clipShape(Circle())
-        .onAppear {
-            withAnimation(.spring(response: 0.8, dampingFraction: 0.8).delay(0.2)) {
-                animatedProgress = Double(score) / 100.0
-            }
+        .padding(16)
+        .background(.ultraThinMaterial) // Liquid Glass effect
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 5)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20)
+                .stroke(LinearGradient(colors: [.white.opacity(0.5), .white.opacity(0.1)], startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - 🎨 COMPONENT: FLUID SCORE RING (Optimized)
+struct FluidScoreRing: View {
+    let score: Int
+    let color: Color
+    
+    var body: some View {
+        // Optimized: Use SwiftUI shapes instead of Canvas for better performance
+        ZStack {
+            // Track (Background Ring)
+            Circle()
+                .stroke(color.opacity(0.15), lineWidth: 12)
+                .padding(8)
+            
+            // Progress Ring with Gradient
+            Circle()
+                .trim(from: 0, to: Double(score) / 100.0)
+                .stroke(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.7)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ),
+                    style: StrokeStyle(lineWidth: 12, lineCap: .round)
+                )
+                .rotationEffect(.degrees(-90))
+                .padding(8)
         }
     }
 }
 
+// MARK: - 🏥 COMPONENT: CLINICAL AMBIENT BACKGROUND
+struct ClinicalAmbientBackground: View {
+    let score: Int
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        GeometryReader { proxy in
+            let baseColor: Color = colorScheme == .dark ? .black : Color(red: 0.96, green: 0.97, blue: 0.99)
+            let accentColor = scoreColor(for: score)
+            
+            ZStack {
+                baseColor
+                
+                // Subtle medical gradient orb
+                Circle()
+                    .fill(accentColor.opacity(0.15))
+                    .frame(width: proxy.size.width * 1.2)
+                    .blur(radius: 100)
+                    .offset(y: -proxy.size.height * 0.4)
+                
+                // Bottom ambient light
+                Circle()
+                    .fill(Color.cyan.opacity(0.1))
+                    .frame(width: proxy.size.width)
+                    .blur(radius: 80)
+                    .offset(y: proxy.size.height * 0.4)
+            }
+        }
+    }
+    
+    private func scoreColor(for score: Int) -> Color {
+        switch score {
+        case 90...100: return .teal
+        case 75..<90: return .blue
+        case 60..<75: return .orange
+        default: return .red
+        }
+    }
+}
 
-// MARK: - Case History View (Unchanged but included for context)
+// Preference Key for Scroll Tracking
+struct ScrollOffsetKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+// MARK: - 🏛️ CASE HISTORY VIEW (Child View)
 struct CaseHistoryView: View {
     let patientCase: PatientCase
-
     @Query private var sessions: [StudentSession]
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var navigationManager: NavigationManager // ✅ ADDED
-    // ✅ ADD ENVIRONMENT USER
     @Environment(User.self) private var currentUser
-
     @State private var selectedSessionForReport: StudentSession?
 
     init(patientCase: PatientCase) {
         self.patientCase = patientCase
-
         let caseId = patientCase.caseId
         self._sessions = Query(
             filter: #Predicate<StudentSession> { session in
                 session.caseId == caseId && session.isCompleted
             },
-            sort: \.sessionId,
-            order: .reverse
+            sort: \.sessionId, order: .reverse
         )
     }
 
-    // ✅ ADD A FILTERED COMPUTED PROPERTY
     private var userSessions: [StudentSession] {
         sessions.filter { $0.user?.id == currentUser.id }
-    }
-
-    // ✅ UPDATE OTHER COMPUTED PROPERTIES TO USE THE FILTERED LIST
-    private var averageScore: Double {
-        let scores = userSessions.compactMap { $0.score }
-        return scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
-    }
-    
-    // ✅ NEW: Best score for display
-    private var bestScore: Double {
-        userSessions.compactMap { $0.score }.max() ?? 0
     }
     
     var body: some View {
@@ -256,171 +440,115 @@ struct CaseHistoryView: View {
             Color(.systemGroupedBackground).ignoresSafeArea()
             
             ScrollView {
-                LazyVStack(spacing: 24) {
-                    caseHeader
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: sessions.count) // ✅ ADDED: Animation for header
+                VStack(spacing: 24) {
+                    // Header Card
+                    GlassCaseHeader(patientCase: patientCase, sessionCount: userSessions.count)
                     
-                    ForEach(userSessions) { session in // ✅ USE THE FILTERED LIST
-                        // ✅ RESTORED: Wrap row in a Button so tapping opens the report sheet directly
-                        Button(action: {
-                            selectedSessionForReport = session
-                        }) {
-                            AttemptRowView(session: session)
+                    // History Timeline
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("ATTEMPT HISTORY")
+                            .font(.system(size: 12, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.leading, 4)
+                        
+                        ForEach(userSessions) { session in
+                            Button(action: { selectedSessionForReport = session }) {
+                                GlassAttemptRow(session: session)
+                            }
+                            .buttonStyle(ScaleButtonStyle())
                         }
-                        .buttonStyle(EnhancedCardButtonStyle())
-                        .padding(.vertical, 4)
                     }
                 }
-                .padding()
+                .padding(20)
             }
         }
         .navigationTitle(patientCase.title)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedSessionForReport) { session in
             let context = EvaluationNavigationContext(patientCase: patientCase, session: session)
-            UnifiedReportView(
-                context: context,
-                modelContext: modelContext,
-                onDismiss: { selectedSessionForReport = nil }
-            )
-        }
-        // ✅ ADDED ONAPPEAR LOGIC
-        .onAppear(perform: presentReportIfNeeded)
-    }
-    
-    // ✅ NEW FUNCTION TO CHECK IF A REPORT SHOULD BE PRESENTED
-    private func presentReportIfNeeded() {
-        // Check if the manager has a requested report
-        guard let context = navigationManager.requestedReportContext else { return }
-        
-        // Check if that report is for THIS specific case
-        guard context.patientCase.caseId == self.patientCase.caseId else { return }
-        
-        // If so, present the sheet with the correct session
-        self.selectedSessionForReport = context.session
-        
-        // CRITICAL: Clear the request in the manager so it doesn't happen again
-        navigationManager.requestedReportContext = nil
-    }
-
-    @ViewBuilder
-    private var caseHeader: some View {
-        // ✅ IMPROVED: Use adaptive material background with specialty color tint for better light/dark mode visibility
-        let specialtyColor = SpecialtyDetailsProvider.color(for: patientCase.specialty)
-        let specialtyIcon = SpecialtyDetailsProvider.details(for: patientCase.specialty).iconName
-        
-        VStack(alignment: .leading, spacing: 16) { // ✅ INCREASED SPACING
-            HStack(spacing: 16) {
-                Image(systemName: specialtyIcon)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(specialtyColor)
-                
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(patientCase.specialty)
-                        .font(.headline)
-                        .foregroundStyle(.primary) // adaptive
-                    
-                    Text(patientCase.chiefComplaint)
-                        .font(.title2.weight(.bold))
-                        .foregroundStyle(.primary) // adaptive
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(20)
-            .background(
-                .regularMaterial, in: RoundedRectangle(cornerRadius: 20) // material for adaptability
-            )
-            .background(
-                specialtyColor.opacity(0.2), in: RoundedRectangle(cornerRadius: 20) // tint overlay
-            )
-            .cornerRadius(20)
-            .shadow(color: specialtyColor.opacity(0.3), radius: 10, y: 5)
-            
-            // ✅ NEW: Average score progress bar + Best score badge
-            VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Average Score: \(Int(averageScore))%")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Text("Best: \(Int(bestScore))%")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(.green)
-                }
-                ProgressView(value: averageScore, total: 100)
-                    .progressViewStyle(LinearProgressViewStyle(tint: specialtyColor))
-                    .clipShape(Capsule())
-                    .frame(height: 8)
-            }
-            .padding(.horizontal)
-            
-            Divider()
-            
-            if userSessions.count == 0 { // ✅ USE FILTERED COUNT
-                Text("No attempts yet.")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal)
-            } else {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("You have \(userSessions.count) completed attempt\(userSessions.count == 1 ? "" : "s") for this case.") // ✅ USE FILTERED COUNT
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.horizontal)
-            }
+            UnifiedReportView(context: context, modelContext: modelContext, onDismiss: { selectedSessionForReport = nil })
         }
     }
-
 }
 
-// MARK: - Attempt Row View
+// MARK: - 🎨 COMPONENT: GLASS CASE HEADER
+struct GlassCaseHeader: View {
+    let patientCase: PatientCase
+    let sessionCount: Int
+    
+    private var specialtyColor: Color {
+        SpecialtyDetailsProvider.color(for: patientCase.specialty)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(patientCase.specialty.uppercased())
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(specialtyColor)
+                        .tracking(1)
+                    
+                    Text(patientCase.chiefComplaint)
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(3)
+                }
+                Spacer()
+                
+                Image(systemName: SpecialtyDetailsProvider.details(for: patientCase.specialty).iconName)
+                    .font(.system(size: 32))
+                    .foregroundStyle(specialtyColor.opacity(0.3))
+            }
+            
+            Divider().overlay(Color.primary.opacity(0.1))
+            
+            HStack {
+                Label("\(sessionCount) Attempts", systemImage: "clock.arrow.circlepath")
+                Spacer()
+                Text(patientCase.difficulty)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.secondary.opacity(0.1), in: Capsule())
+            }
+            .font(.caption.weight(.medium))
+            .foregroundStyle(.secondary)
+        }
+        .padding(20)
+        .background(.regularMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 10, y: 5)
+    }
+}
 
-struct AttemptRowView: View {
+// MARK: - 🎨 COMPONENT: GLASS ATTEMPT ROW
+struct GlassAttemptRow: View {
     let session: StudentSession
-
+    
     private var scoreColor: Color {
         guard let score = session.score else { return .secondary }
         return score > 80 ? .green : score > 60 ? .orange : .red
     }
-
-    private var completionDate: Date? {
-        let lastActionDate = session.performedActions.map { $0.timestamp }.max()
-        let lastMessageDate = session.messages.map { $0.timestamp }.max()
-        return lastActionDate ?? lastMessageDate
+    
+    private var formattedDate: String {
+        let date = session.performedActions.map { $0.timestamp }.max() ?? session.messages.map { $0.timestamp }.max() ?? Date()
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
     
-    // Simple formatted date string helper
-    private var formattedCompletionDate: String {
-        guard let date = completionDate else { return "Date Unavailable" }
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-
     var body: some View {
         HStack(spacing: 16) {
-            VStack {
-                Text("\(Int(session.score ?? 0))")
-                    .font(.title2.weight(.bold))
-                    .foregroundStyle(scoreColor)
-                Text("SCORE")
-                    .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(width: 60)
-            .padding(.vertical, 12)
-            .background(scoreColor.opacity(0.1), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+            Text("\(Int(session.score ?? 0))")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundStyle(scoreColor)
+                .frame(width: 50)
             
             VStack(alignment: .leading, spacing: 4) {
-                Text("Attempt from")
+                Text("Completed Simulation")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                Text(formattedDate)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                
-                Text(formattedCompletionDate)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(completionDate != nil ? .primary : .secondary)
             }
             
             Spacer()
@@ -429,8 +557,14 @@ struct AttemptRowView: View {
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.tertiary)
         }
-        .padding(.vertical, 8)
-        .padding(.horizontal, 16)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(16)
+        .background(Color(.secondarySystemGroupedBackground))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
+}
+
+#Preview {
+    ReportsView()
+        .modelContainer(for: [PatientCase.self, StudentSession.self, User.self], inMemory: true)
+        .environmentObject(NavigationManager())
 }

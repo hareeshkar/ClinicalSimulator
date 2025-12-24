@@ -5,7 +5,6 @@ struct AnimatedAvatarView: View {
     let size: CGFloat // Customizable size (e.g., 72 for Dashboard, 100 for Profile)
 
     @State private var gradientRotation: Double = 0
-    @State private var rotationTimer: Timer?
 
     // Computed properties for proportional elements
     private var borderSize: CGFloat { size + 3 } // Border slightly larger than avatar
@@ -20,17 +19,19 @@ struct AnimatedAvatarView: View {
                 .background(.ultraThinMaterial, in: Circle())
 
             if isBirthday {
-                // The animated rainbow border
-                Circle()
-                    .stroke(
-                        AngularGradient(
-                            gradient: Gradient(colors: [.red, .yellow, .green, .blue, .purple, .red]),
-                            center: .center
-                        ),
-                        lineWidth: 4
-                    )
-                    .frame(width: borderSize, height: borderSize)
-                    .rotationEffect(.degrees(gradientRotation))
+                // Optimized: Use TimelineView instead of Timer for better performance
+                TimelineView(.animation(minimumInterval: 0.03, paused: false)) { context in
+                    Circle()
+                        .stroke(
+                            AngularGradient(
+                                gradient: Gradient(colors: [.red, .yellow, .green, .blue, .purple, .red]),
+                                center: .center
+                            ),
+                            lineWidth: 4
+                        )
+                        .frame(width: borderSize, height: borderSize)
+                        .rotationEffect(.degrees(context.date.timeIntervalSinceReferenceDate * 60))
+                }
 
                 // The crown icon (size and offset adjusted proportionally)
                 Image(systemName: "crown.fill")
@@ -42,19 +43,5 @@ struct AnimatedAvatarView: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .onAppear(perform: startTimerIfNeeded)
-        .onDisappear(perform: stopTimer)
-    }
-
-    private func startTimerIfNeeded() {
-        guard isBirthday, rotationTimer == nil else { return }
-        rotationTimer = Timer.scheduledTimer(withTimeInterval: 0.016, repeats: true) { _ in
-            gradientRotation = (gradientRotation + 2).truncatingRemainder(dividingBy: 360)
-        }
-    }
-
-    private func stopTimer() {
-        rotationTimer?.invalidate()
-        rotationTimer = nil
     }
 }

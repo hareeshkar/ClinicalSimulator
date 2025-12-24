@@ -116,7 +116,7 @@
 - **Extensive Case Library**: Browse 20+ clinical scenarios across 12+ medical specialties
 - **Smart Recommendations**: AI-curated cases based on your training level and role
 - **Difficulty Filters**: Beginner, Intermediate, and Advanced cases with clear indicators
-- **Specialty Categories**: 
+- **Specialty Categories**:
   - 🚨 **Emergency Medicine**: Acute presentations requiring rapid diagnosis
   - ❤️ **Cardiology**: Cardiovascular emergencies and chronic conditions
   - 🫁 **Pulmonology**: Respiratory pathology and critical care
@@ -372,17 +372,20 @@ Clinical Simulator offers a truly immersive multi-language experience, allowing 
 ### Language Features
 
 #### **Native Medical Terminology**
+
 The AI uses authentic medical terms as spoken by native healthcare professionals:
 
 - **Tamil**: Uses proper Tamil medical vocabulary (e.g., "இதய வலி" for chest pain, "மூச்சுத் திணறல்" for shortness of breath)
 - **Sinhala**: Uses proper Sinhala medical vocabulary (e.g., "හුස්ම ගැනීමේ අපහසුතාව" for breathing difficulty)
 
 #### **Culturally Authentic Conversations**
+
 - Patients respond naturally using colloquialisms and expressions from their language
 - Cultural references and healthcare contexts are woven naturally into conversations
 - AI may reference relevant traditional medicine practices when culturally appropriate
 
 #### **Language-Aware Evaluation**
+
 - Feedback delivered in your selected language
 - Medical terminology preserved in English where appropriate
 - Age and cultural background considered in feedback tone and style
@@ -398,12 +401,15 @@ The AI uses authentic medical terms as spoken by native healthcare professionals
 ### Example Interactions
 
 **English Patient Response:**
+
 > "Doctor, I've been having this severe chest pain that started about 2 hours ago. It feels like someone is squeezing my chest."
 
 **Tamil Patient Response:**
+
 > "டாக்டர், எனக்கு இரண்டு மணி நேரத்திற்கு முன்பு மார்பு வலி ஆரம்பமானது. யாரோ என் மார்பை அழுத்துவது போல் உள்ளது."
 
 **Sinhala Patient Response:**
+
 > "ඩොක්ටර්, මට පැය දෙකකට පමණ පෙර ආරම්භ වූ දරුණු පපුවේ වේදනාවක් තියෙනවා. යමෙකු මගේ පපුව මිරිකනවා වගේ දැනෙනවා."
 
 ---
@@ -460,17 +466,20 @@ Clinical Simulator features a comprehensive user authentication system with rich
 ### Authentication System
 
 #### **Secure Sign Up**
+
 - Email-based account creation
 - SHA-256 password hashing for security
 - Duplicate email prevention
 - Validation for all input fields
 
 #### **Persistent Login**
+
 - Automatic session restoration on app launch
 - Secure credential storage using AppStorage
 - Email-based user lookup via SwiftData
 
 #### **Session Management**
+
 - One-tap logout functionality
 - All user data scoped to individual accounts
 - Session history and progress tracked per user
@@ -478,6 +487,7 @@ Clinical Simulator features a comprehensive user authentication system with rich
 ### Profile Customization
 
 #### **Personal Information**
+
 - **Full Name**: Display name shown throughout the app
 - **Email Address**: Unique login identifier
 - **Role/Title**: Select from 15+ medical professional roles (MS1-MS4, Resident, Attending, etc.)
@@ -486,6 +496,7 @@ Clinical Simulator features a comprehensive user authentication system with rich
 - **Native Language**: Choose English, Tamil (தமிழ்), or Sinhala (සිංහල)
 
 #### **Profile Images**
+
 - Upload custom profile pictures
 - Built-in image cropping with Mantis framework
 - Real-time avatar sync across all views
@@ -493,7 +504,9 @@ Clinical Simulator features a comprehensive user authentication system with rich
 - Automatic fallback to initials if no image
 
 #### **Birthday Celebrations** 🎉
+
 When it's your birthday, enjoy special touches:
+
 - Animated rainbow border around your profile avatar
 - Special birthday greeting on Dashboard
 - Celebratory animations throughout the app
@@ -846,6 +859,7 @@ UserInterfaceState.xcuserstate
 ### Firebase Integration
 
 The app uses Firebase AI (Gemini) for:
+
 - ✅ Patient conversation generation
 - ✅ Clinical evaluation and feedback
 - ✅ AI Preceptor hints and guidance
@@ -860,6 +874,7 @@ The app uses Firebase AI (Gemini) for:
 ### Manual Testing Checklist
 
 #### Authentication & Profile
+
 - [ ] Sign up with new email and password
 - [ ] Log in with existing credentials
 - [ ] Update profile settings (name, role, gender, DOB, language)
@@ -867,6 +882,7 @@ The app uses Firebase AI (Gemini) for:
 - [ ] Log out and verify session cleared
 
 #### Dashboard & Navigation
+
 - [ ] View personalized greeting and stats
 - [ ] Check birthday animation (if applicable)
 - [ ] Browse recommended cases for role
@@ -874,6 +890,7 @@ The app uses Firebase AI (Gemini) for:
 - [ ] Continue in-progress sessions
 
 #### Simulation Experience
+
 - [ ] Start new simulation and read briefing
 - [ ] Send chat messages with streaming responses
 - [ ] Test multi-language patient responses (Tamil, Sinhala)
@@ -886,6 +903,7 @@ The app uses Firebase AI (Gemini) for:
 - [ ] Complete simulation and view AI-generated evaluation
 
 #### Reports & Analytics
+
 - [ ] Check performance dashboard and statistics
 - [ ] Review session history with specialty theming
 - [ ] Test role-based recommendations

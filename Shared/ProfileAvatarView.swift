@@ -26,7 +26,7 @@ struct ProfileAvatarView: View {
         }
     }
     
-    // ✅ --- REWORKED loadProfileImage ---
+    // ✅ --- OPTIMIZED loadProfileImage ---
     private func loadProfileImage() {
         // 1. Check if the user has a filename
         guard let filename = currentUser.profileImageFilename, !filename.isEmpty else {
@@ -38,11 +38,17 @@ struct ProfileAvatarView: View {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent(filename)
             
-        // 3. Load the image
-        if let data = try? Data(contentsOf: url) {
-            self.profileImage = UIImage(data: data)
-        } else {
-            self.profileImage = nil
+        // 3. Load the image on background thread to avoid blocking UI
+        Task.detached(priority: .userInitiated) {
+            if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+                await MainActor.run {
+                    self.profileImage = image
+                }
+            } else {
+                await MainActor.run {
+                    self.profileImage = nil
+                }
+            }
         }
     }
 }

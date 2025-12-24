@@ -1,285 +1,189 @@
 import SwiftUI
 import SwiftData
 import PhotosUI
+import CoreHaptics
 
+// MARK: - PROFILE VIEW
 struct ProfileView: View {
-    // MARK: - User Preferences (Persisted)
+    // MARK: - Environment & State
+    @Environment(\.modelContext) private var modelContext
+    @Environment(User.self) private var currentUser
+    @EnvironmentObject var authService: AuthService
+    @Environment(\.colorScheme) private var colorScheme
+    
+    // Preferences
     @AppStorage("userRoleTitle") private var userRoleTitle: String = UserProfileRole.studentMS3.title
     @AppStorage("hapticsEnabled") private var hapticsEnabled: Bool = true
     @AppStorage("preferredColorScheme") private var preferredColorScheme: String = "system"
     
-    // MARK: - Local State
-    @State private var isEditing = false // Controls the edit mode for the profile
-    @State private var editableUserName: String = ""
-    @State private var editableRoleTitle: String = ""
-    @State private var editableGender: Gender = .preferNotToSay
-    @State private var editableDOB: Date = Date()
+    // Edit State (The "Mode" of the Dossier)
+    @State private var isEditing = false
+    @State private var scrollOffset: CGFloat = 0
+    
+    // Local Editing Buffers
+    @State private var editName: String = ""
+    @State private var editRole: String = ""
+    @State private var editGender: Gender = .preferNotToSay
+    @State private var editDOB: Date = Calendar.current.date(byAdding: .year, value: -25, to: Date()) ?? Date()
     @State private var hasDOB: Bool = false
+    @State private var editLanguage: NativeLanguage = .english
     
-    // ✅ FIXED: Non-optional with default value
-    @State private var editableNativeLanguage: NativeLanguage = .english
-    
-    // Alert States
-    @State private var isShowingResetConfirmation = false
-    @State private var isShowingReloadConfirmation = false
-    @State private var isShowingLogoutConfirmation = false
-    
-    // Image Picking State
+    // Assets
     @State private var selectedPhotoItem: PhotosPickerItem?
-    @State private var tempImageForCropping: UIImage?
-    @State private var selectedImage: UIImage?
     @State private var profileImage: UIImage?
+    @State private var selectedImage: UIImage?
+    @State private var tempImageForCropping: UIImage?
     @State private var isShowingCropper = false
     
-    // MARK: - Environment
-    @Environment(\.modelContext) private var modelContext
-    @Environment(User.self) private var currentUser
-    @EnvironmentObject var authService: AuthService
-    
-    // MARK: - Computed Properties
-    private var formattedJoinDate: String {
-        currentUser.createdAt.formatted(date: .long, time: .omitted)
-    }
-    
-    // ✅ NEW: Birthday check logic
-    private var isBirthdayToday: Bool {
-        guard let dob = currentUser.dateOfBirth else { return false }
-        return Calendar.current.isDateInToday(dob)
+    // Alerts
+    @State private var activeAlert: ProfileAlert?
+    enum ProfileAlert: Identifiable {
+        case reset, reload, logout
+        var id: Int { hashValue }
     }
     
     var body: some View {
         NavigationStack {
-            List {
-                ProfileHeaderView(
-                    userName: $editableUserName,
-                    userRoleTitle: $editableRoleTitle,
-                    selectedPhotoItem: $selectedPhotoItem,
-                    profileImage: $profileImage,
-                    isEditing: isEditing,
-                    isBirthday: isBirthdayToday // ✅ Pass birthday status down
-                )
-                .listRowInsets(EdgeInsets())
-                .listRowBackground(Color.clear)
-
-                accountDetailsSection
-                preferencesSection
-                dataManagementSection
-                aboutSection
-                logoutSection
+            ZStack {
+                // Layer 0: Ambient Fluid Background
+                DossierBackground(isEditing: isEditing)
+                    .ignoresSafeArea()
+                
+                // Layer 1: Content
+                ScrollView {
+                    scrollContent
+                }
+                .coordinateSpace(name: "scroll")
+                .onPreferenceChange(ScrollOffsetKey.self) { value in scrollOffset = value }
             }
-            .listStyle(.insetGrouped)
-            .navigationTitle("Profile & Settings")
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar { toolbarContent }
-            .alert("Reset All Progress?", isPresented: $isShowingResetConfirmation, actions: resetConfirmationActions)
-            .alert("Reload Sample Cases?", isPresented: $isShowingReloadConfirmation, actions: reloadConfirmationActions)
-            .alert("Log Out?", isPresented: $isShowingLogoutConfirmation, actions: logoutConfirmationActions)
+            .alert(item: $activeAlert) { alertType in
+                switch alertType {
+                case .reset: return Alert(title: Text("Reset Progress?"), message: Text("This will clear all your simulation data."), primaryButton: .destructive(Text("Reset"), action: resetAllProgress), secondaryButton: .cancel())
+                case .reload: return Alert(title: Text("Reload Cases?"), message: Text("This will refresh the case library."), primaryButton: .default(Text("Reload"), action: reloadSampleCases), secondaryButton: .cancel())
+                case .logout: return Alert(title: Text("Sign Out?"), message: Text("You will need to log in again."), primaryButton: .destructive(Text("Sign Out"), action: performLogout), secondaryButton: .cancel())
+                }
+            }
             .onChange(of: selectedPhotoItem, handlePhotoSelection)
             .fullScreenCover(isPresented: $isShowingCropper) {
                 ImageCropper(image: $tempImageForCropping, onCropComplete: handleCropCompletion)
             }
             .onChange(of: selectedImage, saveProfileImage)
             .onAppear(perform: setupView)
-            .onDisappear(perform: saveChanges)
         }
     }
     
-    // MARK: - ViewBuilder Sections
-    
     @ViewBuilder
-    private var accountDetailsSection: some View {
-        // ✅ IMPROVED: Section animates its content changes between edit/display modes
-        Section("Account Details") {
-            SettingRowView(title: "Email", systemImage: "envelope.fill", color: .gray) {
-                Text(currentUser.email)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+    private var scrollContent: some View {
+        VStack(spacing: 24) {
+            // Scroll Reader
+            GeometryReader { proxy in
+                Color.clear.preference(key: ScrollOffsetKey.self, value: proxy.frame(in: .named("scroll")).minY)
             }
+            .frame(height: 0)
             
-            // The UI for Gender and DOB now intelligently switches based on edit mode
-            if isEditing {
-                editableAccountDetails
-            } else {
-                displayAccountDetails
-            }
-            
-            SettingRowView(title: "Member Since", systemImage: "calendar", color: .gray) {
-                Text(formattedJoinDate)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .animation(.default, value: isEditing)
-    }
-    
-    // ✅ NEW: Extracted display-only rows for clarity
-    @ViewBuilder
-    private var displayAccountDetails: some View {
-        if let gender = currentUser.gender {
-            SettingRowView(title: "Gender", systemImage: "person.2.circle.fill", color: .purple) {
-                Text(gender.rawValue)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        
-        // Always show Date of Birth, with "Not set" if nil
-        SettingRowView(title: "Date of Birth", systemImage: "gift.fill", color: .pink) {
-            if let dob = currentUser.dateOfBirth {
-                Text(dob.formatted(date: .long, time: .omitted))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text("Not set")
-                    .foregroundStyle(.secondary.opacity(0.6))
-            }
-        }
-        
-        // ✅ FIXED: No optional handling needed
-        SettingRowView(title: "Native Language", systemImage: "globe", color: .blue) {
-            Text(currentUser.nativeLanguage.displayName)
-                .foregroundStyle(.secondary)
-        }
-    }
-    
-    // ✅ NEW: Extracted editable controls for clarity
-    @ViewBuilder
-    private var editableAccountDetails: some View {
-        Picker(selection: $editableGender) {
-            ForEach(Gender.allCases, id: \.self) { gender in
-                Text(gender.rawValue).tag(gender)
-            }
-        } label: {
-            SettingRowView(title: "Gender", systemImage: "person.2.circle.fill", color: .purple)
-        }
-        
-        Toggle(isOn: $hasDOB.animation()) {
-            SettingRowView(title: "Set Date of Birth", systemImage: "gift.fill", color: .pink)
-        }
-        
-        if hasDOB {
-            DatePicker(
-                "Birthday",
-                selection: $editableDOB,
-                in: ...Date.now,
-                displayedComponents: .date
+            // 1. IDENTITY CARD (The Core Credential)
+            IdentityCard(
+                user: currentUser,
+                image: profileImage,
+                isEditing: isEditing,
+                editName: $editName,
+                editRole: $userRoleTitle, // Binding to AppStorage directly for now, or buffer
+                selectedPhotoItem: $selectedPhotoItem,
+                isBirthday: isBirthdayToday
             )
-            .datePickerStyle(.graphical)
-            .transition(.scale.combined(with: .opacity))
-        }
-        
-        // ✅ NEW: Editable language picker (menu style so it works well inside a List)
-        Picker(selection: $editableNativeLanguage) {
-            ForEach(NativeLanguage.allCases, id: \.self) { language in
-                Text(language.displayName).tag(language)
-            }
-        } label: {
-            SettingRowView(title: "Native Language", systemImage: "globe", color: .blue)
-        }
-        .pickerStyle(.menu) // <<-- ensure tappable menu-style picker inside List
-    }
-    
-    @ViewBuilder
-    private var preferencesSection: some View {
-        Section("Preferences") {
-            Picker("Theme", selection: $preferredColorScheme) {
-                Text("System").tag("system")
-                Text("Light").tag("light")
-                Text("Dark").tag("dark")
-            }
-            .pickerStyle(.segmented)
+            // Optimized: Reduced parallax effect computation for better scrolling performance
+            .scaleEffect(scrollOffset < 0 ? max(0.95, 1.0 + (scrollOffset / 800)) : 1.0)
+            .offset(y: scrollOffset < 0 ? scrollOffset / 3 : 0)
             
-            Toggle(isOn: $hapticsEnabled) {
-                SettingRowView(title: "Enable Haptics", systemImage: "hand.tap.fill", color: .indigo)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var dataManagementSection: some View {
-        Section("Data Management") {
-            Button(role: .destructive) { isShowingResetConfirmation = true } label: {
-                SettingRowView(title: "Reset All Progress", systemImage: "trash.fill", color: .red)
-            }
-            
-            Button { isShowingReloadConfirmation = true } label: {
-                SettingRowView(title: "Reload Sample Cases", systemImage: "arrow.clockwise.circle.fill", color: .blue)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var aboutSection: some View {
-        Section("About") {
-            SettingRowView(title: "App Version", systemImage: "info.circle.fill", color: .gray) {
-                Text("1.0.0").foregroundStyle(.secondary)
-            }
-            Link(destination: URL(string: "https://www.apple.com")!) {
-                SettingRowView(title: "Privacy Policy", systemImage: "lock.shield.fill", color: .gray)
-            }
-            Link(destination: URL(string: "https://www.apple.com")!) {
-                SettingRowView(title: "Terms of Service", systemImage: "doc.text.fill", color: .gray)
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var logoutSection: some View {
-        Section {
-            Button(action: { isShowingLogoutConfirmation = true }) {
-                HStack {
-                    Spacer()
-                    Label("Log Out", systemImage: "rectangle.portrait.and.arrow.right")
-                        .font(.headline)
-                        .foregroundStyle(.red)
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    // MARK: - Toolbar & Alerts
-    
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .confirmationAction) {
-            Button(isEditing ? "Done" : "Edit") {
+            // 2. BIOMETRICS & DATA (The Details)
+            GlassSection(title: "Personal Information") {
                 if isEditing {
-                    saveChanges()
-                }
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
-                    isEditing.toggle()
+                    EditableBiometrics(
+                        gender: $editGender,
+                        hasDOB: $hasDOB,
+                        dob: $editDOB,
+                        language: $editLanguage
+                    )
+                } else {
+                    ReadOnlyBiometrics(
+                        user: currentUser,
+                        email: currentUser.email
+                    )
                 }
             }
-            .fontWeight(.semibold)
+            
+            // 3. SYSTEM CONFIGURATION (Preferences)
+            GlassSection(title: "Settings") {
+                VStack(spacing: 16) {
+                    PreferenceToggle(
+                        title: "HAPTIC FEEDBACK",
+                        icon: "hand.tap.fill",
+                        isOn: $hapticsEnabled
+                    )
+                    
+                    ThemeSelector(selection: $preferredColorScheme)
+                }
+            }
+            
+            // 4. DATA OPERATIONS (Danger Zone)
+            GlassSection(title: "Data Management", tint: .red) {
+                VStack(spacing: 12) {
+                    ActionRow(title: "Reset Progress", icon: "trash.fill", color: .red) {
+                        activeAlert = .reset
+                    }
+                    Divider().overlay(Color.white.opacity(0.1))
+                    ActionRow(title: "Reload Cases", icon: "arrow.clockwise", color: .blue) {
+                        activeAlert = .reload
+                    }
+                }
+            }
+            
+            // 5. TERMINATION
+            Button(action: { activeAlert = .logout }) {
+                HStack(spacing: 10) {
+                    Image(systemName: "power.circle.fill")
+                        .font(.system(size: 18))
+                    Text("Sign Out of Session")
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                }
+                .foregroundStyle(colorScheme == .dark ? .white.opacity(0.9) : .red)
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity)
+                .background(
+                    Capsule()
+                        .fill(colorScheme == .dark ? Color.red.opacity(0.15) : Color.red.opacity(0.08))
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.red.opacity(colorScheme == .dark ? 0.3 : 0.2), lineWidth: 1)
+                )
+            }
+            .padding(.top, 20)
+            .padding(.bottom, 40)
         }
+        .padding(20)
     }
     
-    @ViewBuilder
-    private func resetConfirmationActions() -> some View {
-        Button("Cancel", role: .cancel) { }
-        Button("Reset Progress", role: .destructive, action: resetAllProgress)
+    // MARK: - Computed Properties & Logic
+    private var isBirthdayToday: Bool {
+        guard let dob = currentUser.dateOfBirth else { return false }
+        let calendar = Calendar.current
+        let todayComponents = calendar.dateComponents([.month, .day], from: Date())
+        let dobComponents = calendar.dateComponents([.month, .day], from: dob)
+        return todayComponents.month == dobComponents.month && todayComponents.day == dobComponents.day
     }
-    
-    @ViewBuilder
-    private func reloadConfirmationActions() -> some View {
-        Button("Cancel", role: .cancel) { }
-        Button("Reload Cases", role: .destructive, action: reloadSampleCases)
-    }
-    
-    @ViewBuilder
-    private func logoutConfirmationActions() -> some View {
-        Button("Cancel", role: .cancel) { }
-        Button("Log Out", role: .destructive, action: performLogout)
-    }
-    
-    // MARK: - Logic & Handlers
     
     private func setupView() {
-        editableUserName = currentUser.fullName
-        editableRoleTitle = userRoleTitle
-        editableGender = currentUser.gender ?? .preferNotToSay
-        // ✅ FIXED: No optional handling needed
-        editableNativeLanguage = currentUser.nativeLanguage
+        editName = currentUser.fullName
+        // editRole = userRoleTitle // (Synced via AppStorage directly for simplicity in this demo)
+        editGender = currentUser.gender ?? .preferNotToSay
+        editLanguage = currentUser.nativeLanguage
         if let dob = currentUser.dateOfBirth {
-            editableDOB = dob
+            editDOB = dob
             hasDOB = true
         } else {
             hasDOB = false
@@ -287,18 +191,33 @@ struct ProfileView: View {
         loadProfileImage()
     }
     
+    private func toggleEditMode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        
+        if isEditing {
+            // SAVE
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                saveChanges()
+                isEditing = false
+            }
+        } else {
+            // EDIT
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                isEditing = true
+            }
+        }
+    }
+    
     private func saveChanges() {
-        currentUser.fullName = editableUserName
-        userRoleTitle = editableRoleTitle
-        currentUser.gender = editableGender
-        currentUser.dateOfBirth = hasDOB ? editableDOB : nil
-        // ✅ FIXED: Direct assignment, no optional
-        currentUser.nativeLanguage = editableNativeLanguage
+        currentUser.fullName = editName
+        // userRoleTitle is auto-saved via AppStorage
+        currentUser.gender = editGender
+        currentUser.dateOfBirth = hasDOB ? editDOB : nil
+        currentUser.nativeLanguage = editLanguage
         try? modelContext.save()
     }
     
-    private func performLogout() { authService.logout() }
-    
+    // ... (Image handling logic same as before, preserved for brevity)
     private func handlePhotoSelection() {
         Task {
             if let data = try? await selectedPhotoItem?.loadTransferable(type: Data.self), let image = UIImage(data: data) {
@@ -307,204 +226,549 @@ struct ProfileView: View {
             }
         }
     }
-    
     private func handleCropCompletion(croppedImage: UIImage) {
         selectedImage = croppedImage
         tempImageForCropping = nil
     }
-    
     private func saveProfileImage() {
         guard let image = selectedImage else { return }
         self.profileImage = image
-        
         let filename = "\(currentUser.id).jpg"
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(filename)
-            
-        guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(filename)
         
-        do {
-            try data.write(to: url)
-            currentUser.profileImageFilename = filename
-            try? modelContext.save()
-            NotificationCenter.default.post(name: .profileImageDidChange, object: nil)
-        } catch {
-            print("Error saving image: \(error.localizedDescription)")
+        // Optimized: Save on background thread to avoid blocking UI
+        Task.detached(priority: .utility) {
+            guard let data = image.jpegData(compressionQuality: 0.8) else { return }
+            try? data.write(to: url)
+            
+            await MainActor.run {
+                self.currentUser.profileImageFilename = filename
+                try? self.modelContext.save()
+                NotificationCenter.default.post(name: .profileImageDidChange, object: nil)
+            }
         }
     }
-    
     private func loadProfileImage() {
-        guard let filename = currentUser.profileImageFilename, !filename.isEmpty else {
-            self.profileImage = nil
-            return
-        }
-        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent(filename)
-        if let data = try? Data(contentsOf: url) {
-            self.profileImage = UIImage(data: data)
-        } else {
-            self.profileImage = nil
+        guard let filename = currentUser.profileImageFilename, !filename.isEmpty else { self.profileImage = nil; return }
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent(filename)
+        
+        // Optimized: Load image on background thread
+        Task.detached(priority: .userInitiated) {
+            if let data = try? Data(contentsOf: url), let image = UIImage(data: data) {
+                await MainActor.run {
+                    self.profileImage = image
+                }
+            } else {
+                await MainActor.run {
+                    self.profileImage = nil
+                }
+            }
         }
     }
     
+    private func performLogout() { Task { authService.logout() } }
     private func resetAllProgress() { try? modelContext.delete(model: StudentSession.self) }
-    private func reloadSampleCases() {
-        try? modelContext.delete(model: PatientCase.self)
-        DataManager.loadSampleData(modelContext: modelContext)
+    private func reloadSampleCases() { try? modelContext.delete(model: PatientCase.self); DataManager.loadSampleData(modelContext: modelContext) }
+    
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .confirmationAction) {
+            Button(action: toggleEditMode) {
+                Text(isEditing ? "Save" : "Edit")
+                    .font(.system(size: 16, weight: .semibold))
+            }
+        }
     }
 }
 
-// MARK: - Reusable ProfileHeaderView (IMPROVED)
-struct ProfileHeaderView: View {
-    @Binding var userName: String
-    @Binding var userRoleTitle: String
-    @Binding var selectedPhotoItem: PhotosPickerItem?
-    @Binding var profileImage: UIImage?
+// MARK: - 🪪 COMPONENT: IDENTITY CARD
+struct IdentityCard: View {
+    let user: User
+    let image: UIImage?
     let isEditing: Bool
-    let isBirthday: Bool // ✅ Receive birthday status
+    @Binding var editName: String
+    @Binding var editRole: String
+    @Binding var selectedPhotoItem: PhotosPickerItem?
+    let isBirthday: Bool
+    @Environment(\.colorScheme) private var colorScheme
     
-    @Environment(User.self) private var currentUser
+    var body: some View {
+        ZStack {
+            // Card background (adapts to light/dark)
+            Group {
+                if colorScheme == .dark {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                } else {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(Color.white)
+                }
+            }
+            .overlay(
+                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                    .stroke(LinearGradient(
+                        colors: [
+                            Color.primary.opacity(colorScheme == .dark ? 0.3 : 0.1),
+                            Color.primary.opacity(colorScheme == .dark ? 0.05 : 0.02)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    ), lineWidth: 1.5)
+            )
+            .shadow(color: Color.black.opacity(colorScheme == .dark ? 0.2 : 0.06), radius: 15, x: 0, y: 10)
+            
+            VStack(spacing: 24) {
+                // Avatar Area with Animated Birthday Effect
+                ZStack {
+                    AnimatedAvatarView(isBirthday: isBirthday, size: 110)
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if isEditing {
+                        PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                            Image(systemName: "camera.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(10)
+                                .background(Color.blue, in: Circle())
+                                .shadow(radius: 4)
+                        }
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                
+                // Text Info
+                VStack(spacing: 10) {
+                    if isEditing {
+                        TextField("Full Name", text: $editName)
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal)
+                        
+                        PremiumRolePicker(selectedRole: Binding(
+                            get: { UserProfileRole(title: editRole) },
+                            set: { editRole = $0.title }
+                        ))
+                        .padding(.top, 8)
+                        
+                    } else {
+                        Text(user.fullName)
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+
+                        Text(editRole.uppercased())
+                            .font(.system(size: 13, weight: .bold, design: .rounded))
+                            .tracking(2)
+                            .foregroundStyle(.blue)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(
+                                Capsule()
+                                    .fill(colorScheme == .dark ? Color.blue.opacity(0.15) : Color.blue.opacity(0.06))
+                            )
+                    }
+                }
+            }
+            .padding(30)
+        }
+        // Physical expansion when editing
+        .frame(height: isEditing ? 340 : 280)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: isEditing)
+    }
+}
+
+// MARK: - GLASS SECTION
+struct GlassSection<Content: View>: View {
+    let title: String
+    var tint: Color = .blue
+    @ViewBuilder let content: Content
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
-        VStack(spacing: 16) {
-            PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
-                AnimatedAvatarView(isBirthday: isBirthday, size: 100)
-                    .overlay(alignment: .bottomTrailing) {
-                        if isEditing {
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.title)
-                                .foregroundColor(.accentColor)
-                                .background(Color.white, in: Circle())
-                                .transition(.scale.combined(with: .opacity))
-                        }
-                    }
-            }
-            .buttonStyle(.plain)
-            .allowsHitTesting(isEditing)
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title.uppercased())
+                .font(.system(size: 12, weight: .bold, design: .rounded))
+                .foregroundStyle(scheme == .dark ? tint.opacity(0.8) : tint.opacity(0.9))
+                .tracking(1.2)
+                .padding(.leading, 4)
 
-            VStack(spacing: 8) {
+            VStack(spacing: 0) {
+                content
+            }
+            .padding(20)
+            .background(
                 Group {
-                    if isEditing {
-                        TextField("Your Name", text: $userName, axis: .vertical)
-                            .lineLimit(3)
+                    if scheme == .dark {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(.ultraThinMaterial)
                     } else {
-                        Text(userName)
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .fill(Color.white)
                     }
                 }
-                .font(.largeTitle.bold())
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-                .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .center)))
-                
-                roleSelector
-            }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .stroke(Color.primary.opacity(scheme == .dark ? 0.1 : 0.05), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(scheme == .dark ? 0.15 : 0.04), radius: 10, x: 0, y: 5)
         }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(.regularMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .animation(.spring(response: 0.5, dampingFraction: 0.7), value: isEditing)
-    }
-
-    @ViewBuilder
-    private var roleSelector: some View {
-        HStack(spacing: 8) {
-            if isEditing {
-                Text("Role:")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-            
-            if !isEditing { Spacer() }
-            
-            Group {
-                if isEditing {
-                    Picker("", selection: $userRoleTitle) {
-                        ForEach(UserProfileRole.allPredefined) { role in
-                            Text(role.title).tag(role.title)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .accentColor(.secondary)
-                } else {
-                    Text(userRoleTitle)
-                }
-            }
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(.secondary)
-            .transition(.opacity)
-            
-            if !isEditing { Spacer() }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        // Use AnyShapeStyle so the ternary result is a single ShapeStyle type (Color vs Material mismatch fixed)
-        .background(isEditing ? AnyShapeStyle(Color.clear) : AnyShapeStyle(.thinMaterial), in: Capsule())
     }
 }
 
-// MARK: - Reusable SettingRowView
-struct SettingRowView<Content: View>: View {
-    let title: String
-    let systemImage: String
-    let color: Color
-    @ViewBuilder var content: Content
-
-    init(title: String, systemImage: String, color: Color, @ViewBuilder content: @escaping () -> Content = { EmptyView() }) {
-        self.title = title
-        self.systemImage = systemImage
-        self.color = color
-        self.content = content()
+// MARK: - 👁️ READ-ONLY BIOMETRICS
+struct ReadOnlyBiometrics: View {
+    let user: User
+    let email: String
+    @Environment(\.colorScheme) private var scheme
+    
+    var body: some View {
+        VStack(spacing: 20) {
+            // Email with flexible sizing
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "envelope.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.blue.gradient)
+                        .frame(width: 24)
+                    Text("Email Address")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                Text(email)
+                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.7)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            
+            Divider().overlay(Color.primary.opacity(0.05))
+            
+            // Gender & Language in grid
+            HStack(spacing: 16) {
+                DataBlock(label: "Gender", value: user.gender?.rawValue ?? "Not Set", icon: "person.2.circle.fill")
+                Divider().frame(height: 40).overlay(Color.primary.opacity(0.05))
+                DataBlock(label: "Language", value: user.nativeLanguage.displayName, icon: "globe.americas.fill")
+            }
+            
+            Divider().overlay(Color.primary.opacity(0.05))
+            
+            // DOB & Member Since in grid
+            HStack(spacing: 16) {
+                if let dob = user.dateOfBirth {
+                    DataBlock(
+                        label: "Date of Birth",
+                        value: dob.formatted(date: .abbreviated, time: .omitted),
+                        icon: "birthday.cake.fill"
+                    )
+                    Divider().frame(height: 40).overlay(Color.primary.opacity(0.05))
+                }
+                DataBlock(
+                    label: "Member Since",
+                    value: user.createdAt.formatted(date: .abbreviated, time: .omitted),
+                    icon: "calendar.badge.clock"
+                )
+            }
+        }
     }
+}
 
+// MARK: - ✏️ EDITABLE BIOMETRICS
+struct EditableBiometrics: View {
+    @Binding var gender: Gender
+    @Binding var hasDOB: Bool
+    @Binding var dob: Date
+    @Binding var language: NativeLanguage
+    @Environment(\.colorScheme) private var scheme
+    
+    var body: some View {
+        VStack(spacing: 22) {
+            // Gender
+            HStack {
+                Label("Gender Identity", systemImage: "person.2.circle.fill")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    ForEach(Gender.allCases) { g in
+                        Button(g.rawValue) { gender = g }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(gender.rawValue)
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.blue)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(scheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03), in: Capsule())
+                }
+            }
+            
+            Divider().overlay(Color.primary.opacity(0.05))
+            
+            // Language
+            HStack {
+                Label("Primary Language", systemImage: "globe.americas.fill")
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Menu {
+                    ForEach(NativeLanguage.allCases) { l in
+                        Button(l.displayName) { language = l }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(language.displayName)
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundStyle(.primary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(.blue)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(scheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03), in: Capsule())
+                }
+            }
+            
+            Divider().overlay(Color.primary.opacity(0.05))
+            
+            // DOB Toggle & Picker
+            VStack(spacing: 12) {
+                Toggle(isOn: $hasDOB) {
+                    Label("Date of Birth", systemImage: "calendar")
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                }
+                .tint(.blue)
+                
+                if hasDOB {
+                    DatePicker("", selection: $dob, displayedComponents: .date)
+                        .datePickerStyle(.compact)
+                        .labelsHidden()
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+        }
+    }
+}
+
+// MARK: - 🧩 SMALLER ATOMIC COMPONENTS
+
+struct DataRow: View {
+    let label: String
+    let value: String
+    let icon: String
+    
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: systemImage)
-                .font(.headline)
-                .foregroundStyle(.white)
-                .frame(width: 32, height: 32)
-                .background(color, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundStyle(.blue.gradient)
+                .frame(width: 24)
             
-            Text(title)
-                .foregroundStyle(.primary)
+            Text(label)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
             
             Spacer()
             
-            content
+            Text(value)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
         }
-        .padding(.vertical, 4)
     }
 }
 
-// MARK: - Preview
-#Preview("Standard View") {
-    let (container, authService, user) = createMockEnvironment()
-    return ProfileView()
-        .modelContainer(container)
-        .environment(user)
-        .environmentObject(authService)
+struct DataBlock: View {
+    let label: String
+    let value: String
+    let icon: String
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.blue.gradient)
+                Text(label)
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .tracking(0.3)
+            }
+            .foregroundStyle(.secondary)
+            
+            Text(value)
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.85)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 }
 
-#Preview("Birthday View") {
-    let (container, authService, user) = createMockEnvironment()
-    user.dateOfBirth = Date()
+struct PreferenceToggle: View {
+    let title: String
+    let icon: String
+    @Binding var isOn: Bool
     
-    return ProfileView()
-        .modelContainer(container)
-        .environment(user)
-        .environmentObject(authService)
+    var body: some View {
+        Toggle(isOn: $isOn) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundStyle(.blue.gradient)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
+            }
+        }
+        .tint(.blue)
+    }
 }
 
-@MainActor
-fileprivate func createMockEnvironment() -> (ModelContainer, AuthService, User) {
-    let config = ModelConfiguration(isStoredInMemoryOnly: true)
-    let container = try! ModelContainer(for: User.self, configurations: config)
+struct ThemeSelector: View {
+    @Binding var selection: String
     
-    let mockUser = User(fullName: "Dr. Alessandra Villanueva", email: "dr.villanueva@example.com", password: "password")
-    container.mainContext.insert(mockUser)
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Appearance Theme", systemImage: "paintbrush.fill")
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .foregroundStyle(.secondary)
+            
+            Picker("", selection: $selection) {
+                Text("System").tag("system")
+                Text("Light").tag("light")
+                Text("Dark").tag("dark")
+            }
+            .pickerStyle(.segmented)
+        }
+        .padding(.top, 4)
+    }
+}
+
+struct ActionRow: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let action: () -> Void
     
-    let authService = AuthService(modelContext: container.mainContext)
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundStyle(color)
+                    .frame(width: 24)
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(color)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(color.opacity(0.4))
+            }
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+// MARK: - 🌋 DOSSIER ATMOSPHERE
+struct DossierBackground: View {
+    var isEditing: Bool
+    @Environment(\.colorScheme) var scheme
     
-    return (container, authService, mockUser)
+    var body: some View {
+        // Optimized: Use static gradient instead of animated canvas for better performance
+        ZStack {
+            // Base color
+            (isEditing 
+                ? (scheme == .dark ? Color(red: 0.08, green: 0.02, blue: 0.02) : Color(red: 1.0, green: 0.98, blue: 0.98))
+                : (scheme == .dark ? Color(red: 0.02, green: 0.02, blue: 0.05) : Color(red: 0.97, green: 0.98, blue: 1.0)))
+            
+            // Subtle gradient orbs (static)
+            GeometryReader { geo in
+                ZStack {
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    (isEditing ? Color.orange : Color.blue).opacity(scheme == .dark ? 0.15 : 0.06),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 300
+                            )
+                        )
+                        .frame(width: 600, height: 600)
+                        .position(x: geo.size.width * 0.3, y: geo.size.height * 0.4)
+                    
+                    Circle()
+                        .fill(
+                            RadialGradient(
+                                colors: [
+                                    (isEditing ? Color.red : Color.cyan).opacity(scheme == .dark ? 0.1 : 0.05),
+                                    Color.clear
+                                ],
+                                center: .center,
+                                startRadius: 0,
+                                endRadius: 300
+                            )
+                        )
+                        .frame(width: 600, height: 600)
+                        .position(x: geo.size.width * 0.7, y: geo.size.height * 0.6)
+                }
+            }
+        }
+        .animation(.easeInOut(duration: 0.4), value: isEditing)
+    }
+}
+
+// MARK: - 🎨 COMPONENT: PREMIUM ROLE PICKER
+struct PremiumRolePicker: View {
+    @Binding var selectedRole: UserProfileRole
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        Menu {
+            ForEach(UserProfileRole.allPredefined) { role in
+                Button(role.title) {
+                    selectedRole = role
+                }
+            }
+        } label: {
+            HStack {
+                Text(selectedRole.title)
+                    .foregroundStyle(.primary)
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.blue)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(scheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.primary.opacity(0.05), lineWidth: 1)
+            )
+        }
+    }
+}
+
+#Preview {
+    ProfileView()
+        .environment(User(fullName: "Dr. Test", email: "test@test.com", password: "pw"))
 }

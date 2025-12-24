@@ -138,14 +138,14 @@ struct CaseBriefingView: View {
             case .success(let detail):
                 VStack(alignment: .leading, spacing: 20) {
                     patientHeader(for: detail)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: showContent)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.05), value: showContent)
                     
                     vitalsSection(for: detail.initialPresentation.vitals)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.2), value: showContent)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.1), value: showContent)
                     
                     // ✅ CRITICAL FIX: Use explicit binding and id() for stable picker state
                     historySection(for: detail)
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.3), value: showContent)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.15), value: showContent)
                         // Prevent re-initialization of this section
                         .id("history-\(caseIdentifier)-\(selectedHistorySection.id)")
                 }
