@@ -61,10 +61,16 @@ class EvaluationViewModel: ObservableObject, Hashable {
     func evaluatePerformance() async {
         guard case .idle = state else { return }
         state = .evaluating
+        session.evaluationStatus = EvaluationStatus.evaluating.rawValue
+        session.evaluationAttempts += 1
         
         let data = Data(patientCase.fullCaseJSON.utf8)
         guard let caseDetail = try? JSONDecoder().decode(EnhancedCaseDetail.self, from: data) else {
-            state = .error("Failed to parse the case file for evaluation.")
+            let errorMsg = "Failed to parse the case file for evaluation."
+            state = .error(errorMsg)
+            session.evaluationStatus = EvaluationStatus.failed.rawValue
+            session.evaluationErrorMessage = errorMsg
+            try? modelContext.save()
             return
         }
         
@@ -82,12 +88,93 @@ class EvaluationViewModel: ObservableObject, Hashable {
             if let resultData = try? JSONEncoder().encode(result) {
                 session.evaluationJSON = String(data: resultData, encoding: .utf8)
             }
+            session.evaluationStatus = EvaluationStatus.completed.rawValue
+            session.evaluationErrorMessage = nil
             try? modelContext.save()
             
             state = .success(result)
         } catch {
             print("Evaluation error: \(error.localizedDescription)")
-            state = .error("An error occurred while generating your report.")
+            
+            // ✅ ENHANCED: Better error classification
+            let (errorMessage, isRetryable) = classifyError(error)
+            
+            session.evaluationStatus = isRetryable ? EvaluationStatus.retryNeeded.rawValue : EvaluationStatus.failed.rawValue
+            session.evaluationErrorMessage = errorMessage
+            try? modelContext.save()
+            
+            state = .error(errorMessage)
+        }
+    }
+    
+    // ✅ NEW: Classify errors for better UX
+    private func classifyError(_ error: Error) -> (message: String, isRetryable: Bool) {
+        let nsError = error as NSError
+        
+        // Network errors (retryable)
+        if nsError.domain == NSURLErrorDomain {
+            let retryableNetworkErrors = [
+                NSURLErrorNetworkConnectionLost,
+                NSURLErrorNotConnectedToInternet,
+                NSURLErrorTimedOut,
+                NSURLErrorCannotFindHost,
+                NSURLErrorCannotConnectToHost,
+                NSURLErrorServerCertificateUntrusted,
+                NSURLErrorServerCertificateHasUnknownRoot
+            ]
+            
+            if retryableNetworkErrors.contains(nsError.code) {
+                return ("Network connection issue. Please check your internet and try again.", true)
+            }
+        }
+        
+        // Timeout errors (retryable)
+        if nsError.code == NSURLErrorTimedOut || nsError.localizedDescription.lowercased().contains("timeout") {
+            return ("Request timed out. Please try again.", true)
+        }
+        
+        // API rate limiting or temporary errors (retryable)
+        if nsError.code == 429 || nsError.localizedDescription.lowercased().contains("rate limit") {
+            return ("API rate limited. Please wait a moment and try again.", true)
+        }
+        
+        // Server errors 5xx (retryable)
+        if nsError.localizedDescription.lowercased().contains("500") || 
+           nsError.localizedDescription.lowercased().contains("502") ||
+           nsError.localizedDescription.lowercased().contains("503") {
+            return ("Server temporarily unavailable. Please try again.", true)
+        }
+        
+        // Gemini API specific errors
+        if nsError.domain == "GeminiService" {
+            let desc = nsError.localizedDescription.lowercased()
+            if desc.contains("no text") || desc.contains("malformed") {
+                return ("AI service returned invalid response. Please try again.", true)
+            }
+            if desc.contains("authentication") || desc.contains("unauthorized") {
+                return ("Authentication error. Please contact support.", false)
+            }
+            if desc.contains("quota") {
+                return ("API quota exceeded. Please try again later.", true)
+            }
+        }
+        
+        // JSON decode errors (might be temporary)
+        if error is DecodingError {
+            return ("Failed to process response. Please try again.", true)
+        }
+        
+        // Generic fallback
+        let fallbackMessage = "An error occurred while evaluating your performance. Please try again."
+        return (fallbackMessage, true)
+    }
+    
+    // ✅ NEW: Retry evaluation after failure
+    func retryEvaluation() async {
+        // Reset to idle to allow evaluation to run again
+        if case .error = state {
+            state = .idle
+            await evaluatePerformance()
         }
     }
     

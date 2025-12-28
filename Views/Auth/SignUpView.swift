@@ -625,6 +625,7 @@ struct PrimaryActionButton: View {
     }
 }
 
+// MARK: - 🎨 SCALE BUTTON STYLE
 struct ScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

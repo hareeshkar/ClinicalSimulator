@@ -1,5 +1,4 @@
-// Views/CaseCategoryListView.swift
-
+// This is the inside view after clicking a catagory section with list of case cards ( the long list of cases in a specialty)
 import SwiftUI
 import SwiftData
 import os.log
@@ -7,101 +6,83 @@ import os.log
 private let categoryLogger = Logger(subsystem: "com.hareeshkar.ClinicalSimulator", category: "CaseCategoryListView")
 
 struct CaseCategoryListView: View {
-    // This view receives the specialty it needs to display.
+    // MARK: - Properties
     let specialty: String
     
     @Environment(\.modelContext) private var modelContext
     @AppStorage("userRoleTitle") private var userRoleTitle: String = UserProfileRole.studentMS3.title
-    
-    // ✅ FIX 1: Get the current user from the environment.
     @Environment(User.self) private var currentUser
     
-    // State for the search bar and for presenting modals.
     @State private var searchText = ""
     @State private var selectedCaseForBriefing: PatientCase?
     @State private var presentingSimulation: ChatViewModel?
     
-    // SwiftData queries to fetch the necessary data from the database.
+    // Data Queries
     @Query private var cases: [PatientCase]
     @Query(filter: #Predicate<StudentSession> { !$0.isCompleted })
     private var inProgressSessions: [StudentSession]
     
-    // Custom initializer (unchanged).
     init(specialty: String) {
         self.specialty = specialty
         _cases = Query(filter: #Predicate { $0.specialty == specialty }, sort: \PatientCase.title)
     }
     
-    // --- Computed Properties for Filtering (Unchanged) ---
-    
+    // MARK: - Filtering Logic
     private var filteredInProgressSessions: [StudentSession] {
         let caseIdsForSpecialty = Set(cases.map { $0.caseId })
-        return inProgressSessions.filter { caseIdsForSpecialty.contains($0.caseId) }
+        // Filter sessions by specialty AND current user
+        return inProgressSessions.filter {
+            caseIdsForSpecialty.contains($0.caseId) &&
+            $0.user?.id == currentUser.id
+        }
     }
 
     private var filteredUnstartedCases: [PatientCase] {
-        let inProgressCaseIds = Set(inProgressSessions.map { $0.caseId })
-        let unstarted = cases.filter { !inProgressCaseIds.contains($0.caseId) }
+        let activeCaseIds = Set(filteredInProgressSessions.map { $0.caseId })
+        let available = cases.filter { !activeCaseIds.contains($0.caseId) }
         
         if searchText.isEmpty {
-            return unstarted
+            return available
         } else {
-            return unstarted.filter {
-                $0.title.localizedCaseInsensitiveContains(searchText)
+            return available.filter {
+                $0.title.localizedCaseInsensitiveContains(searchText) ||
+                $0.chiefComplaint.localizedCaseInsensitiveContains(searchText)
             }
         }
     }
     
-    // Use chiefComplaint (what the user sees) for search filtering
-    private var filteredCases: [PatientCase] {
-        guard !searchText.isEmpty else { return cases }
-        return cases.filter { $0.chiefComplaint.localizedCaseInsensitiveContains(searchText) }
-    }
-    
-    // --- ✅ REWORKED Main Body ---
+    // MARK: - Body
     var body: some View {
-        // 1. The main container is a VStack to stack the header and scroll view.
         VStack(spacing: 0) {
-            // 2. The header is now a fixed banner at the top.
-            headerSection
-                .padding(.bottom)
-                .background(.regularMaterial) // Gives a modern, translucent effect
-            
-            // 3. The cases are inside a custom ScrollView.
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) { // Added spacing
+                VStack(spacing: 24) {
+                    departmentHeader
+                    
                     if !filteredInProgressSessions.isEmpty {
-                        continueSection
+                        roundsSection
                     }
                     
-                    startNewSection
+                    librarySection
                 }
-                .padding()
+                .padding(.top, 16)
+                .padding(.bottom, 40)
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .background(Color(.systemGroupedBackground))
+        .navigationBarTitleDisplayMode(.inline) // Keep inline for clean aesthetic
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Text(specialty.uppercased())
+                    .font(.system(size: 12, weight: .bold))
+                    .tracking(1)
+                    .foregroundStyle(.secondary)
             }
         }
-        .background(Color(.systemGroupedBackground)) // Consistent background
-        .navigationTitle(specialty)
-        .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Search in \(specialty)")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search diagnosis or symptoms")
         .sheet(item: $selectedCaseForBriefing) { patientCase in
-            categoryLogger.log("📋 Opening briefing sheet from category view for case: \(patientCase.caseId, privacy: .public)")
-            return CaseBriefingView(patientCase: patientCase, onBegin: {
-                categoryLogger.log("✅ User began simulation from category list")
-                // ✅ FIX 2: Pass the currentUser to the DataManager call.
-                let session = DataManager.findOrCreateActiveSession(
-                    for: patientCase.caseId,
-                    user: currentUser, // <-- THE FIX
-                    modelContext: modelContext
-                )
-                // ✅ Pass userRole here
-                let viewModel = ChatViewModel(
-                    patientCase: patientCase,
-                    session: session,
-                    modelContext: modelContext,
-                    userRole: userRoleTitle
-                )
-                selectedCaseForBriefing = nil
-                presentingSimulation = viewModel
+            CaseBriefingView(patientCase: patientCase, onBegin: {
+                startSimulation(for: patientCase)
             })
         }
         .fullScreenCover(item: $presentingSimulation) { viewModel in
@@ -109,97 +90,180 @@ struct CaseCategoryListView: View {
                 SimulationView(chatViewModel: viewModel)
             }
         }
-        // Hide the default back button text for a cleaner look
-        .toolbarTitleDisplayMode(.inline)
     }
     
-    // --- ✅ ENHANCED ViewBuilder Helper Properties ---
+    // MARK: - Components
     
     @ViewBuilder
-    private var headerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 16) {
+    private var departmentHeader: some View {
+        ZStack(alignment: .center) {
+            // LAYER 1: Cinematic Background Image
+            SpecialtyCinematicBackground(specialty: specialty, color: SpecialtyDetailsProvider.color(for: specialty))
+                .clipped()
+
+            // LAYER 2: Dark Cinematic Scrim for text legibility
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.0),
+                    Color.black.opacity(0.3),
+                    Color.black.opacity(0.6)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // LAYER 3: Watermark Icon (subtle background element)
+            GeometryReader { geo in
                 Image(systemName: SpecialtyDetailsProvider.details(for: specialty).iconName)
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(SpecialtyDetailsProvider.color(for: specialty))
-                
-                VStack(alignment: .leading) {
-                    Text(specialty)
-                        .font(.largeTitle.bold())
-                    
-                    Text(SpecialtyDetailsProvider.details(for: specialty).description)
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                }
+                    .font(.system(size: 140, weight: .black))
+                    .foregroundStyle(Color.white)
+                    .blur(radius: 1)
+                    .opacity(0.05)
+                    .rotationEffect(.degrees(5))
+                    .offset(x: geo.size.width * 0.3, y: -geo.size.height * 0.2)
+                    .blendMode(.overlay)
             }
+
+            // LAYER 4: Editorial Content (Text)
+            VStack(spacing: 12) {
+                Text(specialty)
+                    .font(.system(size: 36, weight: .black, design: .serif))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+
+                Text(SpecialtyDetailsProvider.details(for: specialty).description)
+                    .font(.system(size: 14, weight: .medium, design: .default))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                    .padding(.horizontal, 24)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
+            .padding(.vertical, 32)
+            .padding(.horizontal, 16)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding()
+        .frame(height: 280)
+        // Soften hard rectangle edges: rounded corners + vignette overlay
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay(
+            // Vignette to fade edges and blend with UI
+            RadialGradient(
+                gradient: Gradient(stops: [
+                    .init(color: Color.clear, location: 0.0),
+                    .init(color: Color.black.opacity(0.08), location: 0.7),
+                    .init(color: Color.black.opacity(0.30), location: 1.0)
+                ]),
+                center: .center,
+                startRadius: 0,
+                endRadius: 420
+            )
+            .blendMode(.overlay)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        )
+        .shadow(color: Color.black.opacity(0.12), radius: 12, x: 0, y: 6)
+        .padding(.horizontal, 12)
     }
     
     @ViewBuilder
-    private var continueSection: some View {
-        VStack(alignment: .leading, spacing: 28) {
-            Label("Continue Where You Left Off", systemImage: "play.circle.fill")
-                .font(.title2.bold()) // Bolder title
-                .foregroundStyle(.primary)
+    private var roundsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Active Rounds", systemImage: "clock.arrow.circlepath")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
             
-            // The cards are now in their own VStack
-            VStack(spacing: 38) {
+            VStack(spacing: 12) {
                 ForEach(filteredInProgressSessions) { session in
                     if let patientCase = cases.first(where: { $0.caseId == session.caseId }) {
-                        Button(action: {
-                            // ✅ Pass userRole here
-                            presentingSimulation = ChatViewModel(
-                                patientCase: patientCase,
-                                session: session,
-                                modelContext: modelContext,
-                                userRole: userRoleTitle
-                            )
-                        }) {
+                        Button {
+                            resumeSimulation(case: patientCase, session: session)
+                        } label: {
                             CaseListItemView(patientCase: patientCase, session: session, action: .continue)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ListButtonStyle())
                     }
                 }
             }
+            .padding(.horizontal)
         }
     }
     
     @ViewBuilder
-    private var startNewSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            Label("Start a New Case", systemImage: "doc.text.fill")
-                .font(.title2.bold())
-                .foregroundStyle(.primary)
+    private var librarySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label(searchText.isEmpty ? "Patient List" : "Search Results", systemImage: "text.book.closed")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal)
             
             if filteredUnstartedCases.isEmpty {
-                ContentUnavailableView(
-                    "No New Cases",
-                    systemImage: "doc.text.magnifyingglass",
-                    description: Text(searchText.isEmpty ? "You've completed all available cases in \(specialty)." : "No cases found for \"\(searchText)\".")
-                )
-                .padding(.top, 40)
+                ContentUnavailableView {
+                    Label("No Cases Found", systemImage: "magnifyingglass")
+                } description: {
+                    Text(searchText.isEmpty ? "No new cases available in this specialty." : "Try adjusting your search terms.")
+                }
+                .padding(.top, 20)
             } else {
-                VStack(spacing: 16) {
+                LazyVStack(spacing: 12) {
                     ForEach(filteredUnstartedCases) { patientCase in
-                        Button(action: { selectedCaseForBriefing = patientCase }) {
+                        Button {
+                            selectedCaseForBriefing = patientCase
+                        } label: {
                             CaseListItemView(patientCase: patientCase, action: .start)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(ListButtonStyle())
                     }
                 }
+                .padding(.horizontal)
             }
+        }
+    }
+    
+    // MARK: - Actions
+    
+    private func startSimulation(for patientCase: PatientCase) {
+        categoryLogger.log("✅ Starting new simulation: \(patientCase.caseId)")
+        let session = DataManager.findOrCreateActiveSession(
+            for: patientCase.caseId,
+            user: currentUser,
+            modelContext: modelContext
+        )
+        launchSimulation(case: patientCase, session: session)
+    }
+    
+    private func resumeSimulation(case patientCase: PatientCase, session: StudentSession) {
+        categoryLogger.log("✅ Resuming simulation: \(patientCase.caseId)")
+        launchSimulation(case: patientCase, session: session)
+    }
+    
+    private func launchSimulation(case patientCase: PatientCase, session: StudentSession) {
+        // Dismiss sheet if present
+        selectedCaseForBriefing = nil
+        
+        // Initialize VM with exact backend requirements
+        let viewModel = ChatViewModel(
+            patientCase: patientCase,
+            session: session,
+            modelContext: modelContext,
+            userRole: userRoleTitle
+        )
+        
+        // Trigger presentation
+        // Tiny delay ensures sheet dismissal doesn't conflict with full screen cover
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            presentingSimulation = viewModel
         }
     }
 }
 
+// MARK: - Helper Styles
 
-
-// --- Preview (Unchanged) ---
-#Preview {
-    NavigationStack {
-        CaseCategoryListView(specialty: "Cardiology")
-            .modelContainer(for: [PatientCase.self, StudentSession.self], inMemory: true)
+struct ListButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed)
     }
 }

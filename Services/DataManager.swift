@@ -83,4 +83,89 @@ class DataManager {
         let descriptor = FetchDescriptor(predicate: predicate)
         return try? modelContext.fetch(descriptor).first
     }
+    
+    // ✅ NEW: Smart reload - updates existing cases, adds new ones, preserves relationships
+    static func reloadSampleCasesUpsert(modelContext: ModelContext) throws {
+        guard let url = Bundle.main.url(forResource: "SampleCases", withExtension: "json") else {
+            throw NSError(domain: "DataManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to find SampleCases.json"])
+        }
+        guard let data = try? Data(contentsOf: url) else {
+            throw NSError(domain: "DataManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to load SampleCases.json"])
+        }
+        
+        do {
+            // Step 1: Decode fresh cases from JSON
+            let casesFromJSON = try JSONDecoder().decode([EnhancedCaseDetail].self, from: data)
+            
+            // Step 2: Fetch all existing cases for comparison
+            let descriptor = FetchDescriptor<PatientCase>()
+            let existingCases = try modelContext.fetch(descriptor)
+            let existingCasesMap = Dictionary(uniqueKeysWithValues: existingCases.map { ($0.caseId, $0) })
+            
+            var updatedCount = 0
+            var addedCount = 0
+            
+            // Step 3: Upsert each case from JSON
+            for caseDetail in casesFromJSON {
+                // Encode case as JSON string
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = .prettyPrinted
+                let caseData = try encoder.encode(caseDetail)
+                let jsonString = String(data: caseData, encoding: .utf8)!
+                
+                let caseId = caseDetail.metadata.caseId
+                
+                if let existingCase = existingCasesMap[caseId] {
+                    // UPDATE existing case
+                    existingCase.title = caseDetail.metadata.title
+                    existingCase.specialty = caseDetail.metadata.specialty
+                    existingCase.difficulty = caseDetail.metadata.difficulty
+                    existingCase.chiefComplaint = caseDetail.initialPresentation.chiefComplaint
+                    existingCase.fullCaseJSON = jsonString
+                    
+                    // Update recommended levels if provided in JSON
+                    if let recommended = caseDetail.metadata.recommendedForLevels, !recommended.isEmpty {
+                        existingCase.recommendedForLevels = recommended
+                    } else {
+                        existingCase.recommendedForLevels = PatientCase.inferRecommendedLevels(from: caseDetail.metadata.difficulty)
+                    }
+                    
+                    updatedCount += 1
+                } else {
+                    // INSERT new case
+                    let newCase = PatientCase(
+                        caseId: caseId,
+                        title: caseDetail.metadata.title,
+                        specialty: caseDetail.metadata.specialty,
+                        difficulty: caseDetail.metadata.difficulty,
+                        chiefComplaint: caseDetail.initialPresentation.chiefComplaint,
+                        fullCaseJSON: jsonString
+                    )
+                    
+                    if let recommended = caseDetail.metadata.recommendedForLevels, !recommended.isEmpty {
+                        newCase.recommendedForLevels = recommended
+                    }
+                    
+                    modelContext.insert(newCase)
+                    addedCount += 1
+                }
+            }
+            
+            // Step 4: Delete cases that exist in DB but not in JSON (orphaned cases)
+            let jsonCaseIds = Set(casesFromJSON.map { $0.metadata.caseId })
+            for existingCase in existingCases {
+                if !jsonCaseIds.contains(existingCase.caseId) {
+                    modelContext.delete(existingCase)
+                    print("🗑️ Deleted orphaned case: \(existingCase.caseId)")
+                }
+            }
+            
+            // Step 5: Save all changes atomically
+            try modelContext.save()
+            print("✅ Cases reload complete: \(updatedCount) updated, \(addedCount) added")
+            
+        } catch let error as NSError {
+            throw error
+        }
+    }
 }

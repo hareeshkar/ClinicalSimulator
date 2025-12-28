@@ -1,5 +1,5 @@
 // Views/CaseListItemView.swift
-
+// This is the card in teh dahsboard with In progress and resume and this the case card
 import SwiftUI
 
 /// A visually refined, data-driven list item that presents a clinical case.

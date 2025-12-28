@@ -30,6 +30,7 @@ struct ReportsView: View {
 
     @EnvironmentObject private var navigationManager: NavigationManager
     @Environment(User.self) private var currentUser
+    @Environment(\.modelContext) private var modelContext
     
     @State private var sortOption: SortOption = .latestToOld
     @State private var scrollOffset: CGFloat = 0
@@ -114,6 +115,14 @@ struct ReportsView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .navigationDestination(for: PatientCase.self) { patientCase in
                 CaseHistoryView(patientCase: patientCase)
+            }
+            // If a specific report context was requested (e.g., from Simulation end), present it immediately.
+            .sheet(item: $navigationManager.requestedReportContext) { context in
+                UnifiedReportView(
+                    context: context,
+                    modelContext: modelContext,
+                    onDismiss: { navigationManager.requestedReportContext = nil }
+                )
             }
         }
     }
@@ -213,7 +222,6 @@ struct ReportsView: View {
                 NavigationLink(value: pair.patientCase) {
                     GlassReportCard(patientCase: pair.patientCase, session: pair.session)
                 }
-                .buttonStyle(ScaleButtonStyle())
             }
         }
         // Animate reordering
@@ -258,6 +266,12 @@ struct GlassReportCard: View {
     let session: StudentSession
     
     private var scoreColor: Color {
+        // Check for failed/error states first
+        if session.evaluationStatus == EvaluationStatus.failed.rawValue || 
+           session.evaluationStatus == EvaluationStatus.retryNeeded.rawValue {
+            return .red
+        }
+        
         guard let score = session.score else { return .gray }
         switch score {
         case 90...100: return .teal
@@ -275,13 +289,27 @@ struct GlassReportCard: View {
         HStack(spacing: 16) {
             // Score Pill (Vertical Layout)
             VStack(spacing: 2) {
-                Text("\(Int(session.score ?? 0))")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundStyle(scoreColor)
-                
-                Text("%")
-                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                    .foregroundStyle(scoreColor.opacity(0.8))
+                if session.evaluationStatus == EvaluationStatus.failed.rawValue || 
+                   session.evaluationStatus == EvaluationStatus.retryNeeded.rawValue {
+                    // Failed state: show !
+                    Image(systemName: "exclamationmark.circle.fill")
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(scoreColor)
+                } else if session.score != nil {
+                    // Completed: show score
+                    Text("\(Int(session.score ?? 0))")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(scoreColor)
+                    
+                    Text("%")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(scoreColor.opacity(0.8))
+                } else {
+                    // Not started: show dash
+                    Text("—")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundStyle(.gray)
+                }
             }
             .frame(width: 50, height: 50)
             .background(
@@ -371,7 +399,7 @@ struct ClinicalAmbientBackground: View {
     
     var body: some View {
         GeometryReader { proxy in
-            let baseColor: Color = colorScheme == .dark ? .black : Color(red: 0.96, green: 0.97, blue: 0.99)
+            let baseColor = Color(.systemGroupedBackground)
             let accentColor = scoreColor(for: score)
             
             ZStack {
@@ -418,6 +446,7 @@ struct CaseHistoryView: View {
     @Query private var sessions: [StudentSession]
     @Environment(\.modelContext) private var modelContext
     @Environment(User.self) private var currentUser
+    @EnvironmentObject private var navigationManager: NavigationManager
     @State private var selectedSessionForReport: StudentSession?
 
     init(patientCase: PatientCase) {
@@ -433,6 +462,14 @@ struct CaseHistoryView: View {
 
     private var userSessions: [StudentSession] {
         sessions.filter { $0.user?.id == currentUser.id }
+    }
+
+    private var sortedSessions: [StudentSession] {
+        userSessions.sorted { lhs, rhs in
+            let lhsDate = lhs.performedActions.map { $0.timestamp }.max() ?? lhs.messages.map { $0.timestamp }.max() ?? .distantPast
+            let rhsDate = rhs.performedActions.map { $0.timestamp }.max() ?? rhs.messages.map { $0.timestamp }.max() ?? .distantPast
+            return lhsDate > rhsDate
+        }
     }
     
     var body: some View {
@@ -451,11 +488,10 @@ struct CaseHistoryView: View {
                             .foregroundStyle(.secondary)
                             .padding(.leading, 4)
                         
-                        ForEach(userSessions) { session in
+                        ForEach(sortedSessions) { session in
                             Button(action: { selectedSessionForReport = session }) {
                                 GlassAttemptRow(session: session)
                             }
-                            .buttonStyle(ScaleButtonStyle())
                         }
                     }
                 }
@@ -524,8 +560,16 @@ struct GlassCaseHeader: View {
 // MARK: - 🎨 COMPONENT: GLASS ATTEMPT ROW
 struct GlassAttemptRow: View {
     let session: StudentSession
+    @EnvironmentObject private var navigationManager: NavigationManager
+    @State private var showErrorDetails = false
     
     private var scoreColor: Color {
+        // Check for failed/error states first
+        if session.evaluationStatus == EvaluationStatus.failed.rawValue || 
+           session.evaluationStatus == EvaluationStatus.retryNeeded.rawValue {
+            return .red
+        }
+        
         guard let score = session.score else { return .secondary }
         return score > 80 ? .green : score > 60 ? .orange : .red
     }
@@ -535,31 +579,95 @@ struct GlassAttemptRow: View {
         return date.formatted(date: .abbreviated, time: .shortened)
     }
     
+    private var hasError: Bool {
+        session.evaluationStatus == EvaluationStatus.failed.rawValue || 
+        session.evaluationStatus == EvaluationStatus.retryNeeded.rawValue
+    }
+    
     var body: some View {
         HStack(spacing: 16) {
-            Text("\(Int(session.score ?? 0))")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
-                .foregroundStyle(scoreColor)
-                .frame(width: 50)
+            Group {
+                if let score = session.score {
+                    // Show score whenever it exists, regardless of evaluation status
+                    Text("\(Int(score))%")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(scoreColor)
+                } else if session.evaluationStatus == EvaluationStatus.completed.rawValue {
+                    // Completed evaluation but score is nil - show 0
+                    Text("0")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(.secondary)
+                } else if navigationManager.evaluatingSessionIDs.contains(session.sessionId) {
+                    // Session is currently being evaluated — show loader
+                    ProgressView()
+                        .frame(width: 22, height: 22)
+                } else if hasError {
+                    // Failed evaluation — show ! icon
+                    ZStack {
+                        Circle()
+                            .fill(Color.red.opacity(0.1))
+                        
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundStyle(.red)
+                    }
+                    .frame(width: 32, height: 32)
+                } else {
+                    // No score yet (not evaluated)
+                    Text("—")
+                        .font(.system(size: 22, weight: .bold, design: .rounded))
+                        .foregroundStyle(Color.secondary)
+                }
+            }
+            .frame(width: 50)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text("Completed Simulation")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(.primary)
-                Text(formattedDate)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                
+                // Show error message if available
+                if hasError, let errorMsg = session.evaluationErrorMessage, !errorMsg.isEmpty {
+                    Text(errorMsg)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .lineLimit(2)
+                } else {
+                    Text(formattedDate)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             
             Spacer()
             
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(.tertiary)
+            // Show retry badge if needed
+            if session.evaluationStatus == EvaluationStatus.retryNeeded.rawValue {
+                HStack(spacing: 4) {
+                    Image(systemName: "arrow.clockwise.small")
+                        .font(.caption2.weight(.semibold))
+                    Text("Retry")
+                        .font(.caption2.weight(.semibold))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.blue.opacity(0.1))
+                .foregroundStyle(.blue)
+                .clipShape(Capsule())
+            } else if hasError {
+                Image(systemName: "exclamationmark")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.red)
+            } else {
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
         }
         .padding(16)
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .help(hasError && session.evaluationErrorMessage != nil ? session.evaluationErrorMessage! : "")
     }
 }
 

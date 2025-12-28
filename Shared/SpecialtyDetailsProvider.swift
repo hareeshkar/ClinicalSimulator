@@ -110,11 +110,100 @@ struct SpecialtyDetailsProvider {
                 iconName: "brain",
                 description: "Treat diseases of the nervous system including the brain, spinal cord, peripheral nerves and neuromuscular junction."
             )
+        case "Dermatology":
+            return (
+                iconName: "hand.raised.fill",
+                description: "Specialize in skin, hair, and nail disorders: acne, eczema, psoriasis, skin cancers, and cosmetic dermatology."
+            )
+        case "Infectious Disease":
+            return (
+                iconName: "bacteria.fill",
+                description: "Focus on infections caused by bacteria, viruses, fungi, and parasites; manage complex or resistant infections and travel medicine."
+            )
+        case "Obstetrics/Gynecology":
+            return (
+                iconName: "figure.dress.line.vertical.figure",
+                description: "Provide comprehensive care for women's reproductive health: pregnancy, childbirth, gynecological disorders, and preventive screenings."
+            )
         default:
             return (
                 iconName: "star.fill",
                 description: "Explore clinical cases in this specialty."
             )
+        }
+    }
+}
+
+// MARK: - Specialty Cinematic Background View
+/// A view that displays a specialty-specific background image with a Ken Burns zoom effect.
+/// Used for category cards and headers to provide visual context.
+struct SpecialtyCinematicBackground: View {
+    let specialty: String
+    let color: Color
+    
+    // Normalized asset name generator
+    // e.g., "Emergency Medicine" -> "img_emergency_medicine"
+    private var assetName: String {
+        let normalized = specialty.lowercased()
+            .replacingOccurrences(of: " ", with: "_")
+            .replacingOccurrences(of: "/", with: "_")
+        return "img_\(normalized)"
+    }
+    
+    var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Background Base
+                Color(red: 0.05, green: 0.05, blue: 0.05) // Near black
+                
+                if UIImage(named: assetName) != nil {
+                    // OPTION A: High-Fidelity Asset found
+                    Image(assetName)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    // Tint the photo slightly with the specialty color for brand consistency
+                        .overlay(color.opacity(0.2).blendMode(.overlay))
+                    // Desaturate slightly for "Documentary" look
+                        .saturation(0.8)
+                } else {
+                    // OPTION B: Procedural "Atmosphere" (Fallback)
+                    // Not vector shapes. Instead, soft light leaks.
+                    ZStack {
+                        // Main Mood Light
+                        RadialGradient(
+                            colors: [color.opacity(0.5), color.opacity(0.1), .clear],
+                            center: .topLeading,
+                            startRadius: 0,
+                            endRadius: geo.size.width * 1.2
+                        )
+                        .blendMode(.screen)
+                        
+                        // Secondary "Shadow" Light (creates depth)
+                        RadialGradient(
+                            colors: [.clear, .black.opacity(0.6)],
+                            center: .center,
+                            startRadius: 0,
+                            endRadius: geo.size.width
+                        )
+                        
+                        // Film Grain Texture (The Anti-Tech secret sauce)
+                        // Adds organic noise so gradients don't look digital
+                        Rectangle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.white.opacity(0.05), .clear],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                            )
+                            .blendMode(.overlay)
+                        
+                        // Subtle Noise Pattern
+                        Color.white.opacity(0.03)
+                    }
+                }
+            }
         }
     }
 }

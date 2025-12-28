@@ -1,10 +1,7 @@
-// Views/CaseLibraryView.swift
-
 import SwiftUI
 import SwiftData
 
-// MARK: - Model
-
+// MARK: - Model (Unchanged)
 struct SpecialtyCategory: Identifiable, Hashable {
     var id: String { name }
     let name: String
@@ -13,20 +10,17 @@ struct SpecialtyCategory: Identifiable, Hashable {
 }
 
 // MARK: - Main View
-
 struct CaseLibraryView: View {
     // MARK: - Properties
-    
     @Query(sort: \PatientCase.specialty) private var allCases: [PatientCase]
     @State private var searchText = ""
     @State private var navigationPath = NavigationPath()
-    @FocusState private var isSearchFieldFocused: Bool // Controls keyboard focus
+    @FocusState private var isSearchFieldFocused: Bool
     
-    // ✅ 3. Flag to easily enable/disable haptics
+    // Config
     private let enableHaptics = true
     
     // MARK: - Computed Properties
-    
     private var specialtyCategories: [SpecialtyCategory] {
         let groupedBySpecialty = Dictionary(grouping: allCases, by: { $0.specialty })
         return groupedBySpecialty.map { (name, cases) in
@@ -49,95 +43,81 @@ struct CaseLibraryView: View {
     }
     
     // MARK: - Body
-    
     var body: some View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: 24) {
-                    // The header now contains our custom, non-moving search bar
-                    headerView
+                    // Floating Search Header
+                    searchHeader
                     
+                    // Grid Content
                     if filteredSpecialties.isEmpty {
-                        ContentUnavailableView(
-                            "No Specialties Found",
-                            systemImage: "magnifyingglass",
-                            description: Text(
-                                searchText.isEmpty
-                                    ? "There are currently no cases available."
-                                    : "Check your spelling or try a different search term."
-                            )
-                        )
-                        .padding(.top, 50)
+                        emptyState
                     } else {
-                        gridOfSpecialties
+                        specialtyGrid
                     }
                 }
                 .padding(.horizontal)
+                .padding(.top, 16)
+                .padding(.bottom, 100) // Space for tab bar
             }
-            // ✅ 1. Keyboard is dismissed naturally when scrolling
             .scrollDismissesKeyboard(.interactively)
             .background(Color(.systemGroupedBackground))
-            // ✅ 1. Tap gesture on the background to dismiss keyboard AND cancel search
             .onTapGesture {
                 isSearchFieldFocused = false
-                
             }
-            .navigationTitle("Explore by Specialty")
+            .navigationTitle("Library") // Standard Centered Title
+            .navigationBarTitleDisplayMode(.inline) // Force inline for consistency
             .navigationDestination(for: SpecialtyCategory.self) { category in
                 CaseCategoryListView(specialty: category.name)
             }
         }
-        .dismissKeyboardOnTap()
     }
     
     // MARK: - Subviews
     
     @ViewBuilder
-    private var headerView: some View {
-        VStack(alignment: .leading, spacing: 16) { // Increased spacing for search bar
-            // Subheading remains in place
-            Text("Select a category to practice your clinical reasoning skills.")
+    private var searchHeader: some View {
+        VStack(spacing: 12) {
+            // Description Text
+            Text("Browse by specialty to find relevant clinical scenarios.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
             
-            // ✅ 2. Custom search bar that doesn't push the UI up
-            HStack {
+            // Cinematic Search Field
+            HStack(spacing: 12) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(.secondary)
                 
-                TextField("Search Specialties", text: $searchText)
-                    .focused($isSearchFieldFocused) // Link to focus state
+                TextField("Search departments...", text: $searchText)
+                    .focused($isSearchFieldFocused)
+                    .font(.system(size: 16))
                 
-                // Show clear button only when there is text
                 if !searchText.isEmpty {
-                    Button(action: {
-                        searchText = ""
-                    }) {
+                    Button(action: { searchText = "" }) {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain) // Use plain style to avoid coloring the button
                 }
             }
-            .padding(10)
-            .background(Color(.systemGray6))
-            .cornerRadius(10)
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: Color.black.opacity(0.05), radius: 10, y: 5)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top)
+        .padding(.bottom, 10)
     }
     
     @ViewBuilder
-    private var gridOfSpecialties: some View {
+    private var specialtyGrid: some View {
+        // ✅ UPDATED: Adaptive Grid Layout (minimum 160)
         LazyVGrid(
-            columns: [GridItem(.adaptive(minimum: 160), spacing: 16)],
+            columns: [GridItem(.adaptive(minimum: 160), spacing: 16)], 
             spacing: 16
         ) {
             ForEach(Array(filteredSpecialties.enumerated()), id: \.element.id) { index, category in
-                Button(action: {
-                    isSearchFieldFocused = false // Dismiss keyboard on navigation
-                    navigationPath.append(category)
-                }) {
+                NavigationLink(value: category) {
                     CategoryCardView(
                         specialty: category.name,
                         iconName: category.iconName,
@@ -145,38 +125,43 @@ struct CaseLibraryView: View {
                         color: SpecialtyDetailsProvider.color(for: category.name)
                     )
                 }
-                .buttonStyle(CardButtonStyle(enableHaptics: self.enableHaptics))
-                // ✅ 3. Improved animation choreography
+                .buttonStyle(CardButtonStyle(enableHaptics: enableHaptics))
+                // ✅ RESTORED: Cascade/Spring Animation
                 .animation(
                     .spring(response: 0.5, dampingFraction: 0.7, blendDuration: 0)
-                    .delay(Double(index) * 0.05), // Slightly faster cascade
-                    value: filteredSpecialties
+                    .delay(Double(index) * 0.05), // Stagger delay based on index
+                    value: filteredSpecialties // Trigger when data changes
                 )
+                .transition(.scale.combined(with: .opacity))
             }
         }
+    }
+    
+    @ViewBuilder
+    private var emptyState: some View {
+        ContentUnavailableView {
+            Label("No Results", systemImage: "magnifyingglass")
+        } description: {
+            Text("Try adjusting your search terms.")
+        }
+        .padding(.top, 60)
     }
 }
 
 // MARK: - Custom Button Style
-// ✅ 3. Now configurable to enable/disable haptics
 struct CardButtonStyle: ButtonStyle {
-    var enableHaptics: Bool = true
+    var enableHaptics: Bool
     
     func makeBody(configuration: Configuration) -> some View {
-        let isPressed = configuration.isPressed
-        
         configuration.label
             .rotation3DEffect(
-                .degrees(isPressed ? 8 : 0),
-                axis: (x: isPressed ? -1.0 : 0, y: isPressed ? 1.0 : 0, z: 0)
+                .degrees(configuration.isPressed ? 8 : 0),
+                axis: (x: configuration.isPressed ? -1.0 : 0, y: configuration.isPressed ? 1.0 : 0, z: 0)
             )
-            .scaleEffect(isPressed ? 0.97 : 1.0)
-            .animation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0), value: isPressed)
-            .sensoryFeedback(.impact(weight: .light, intensity: 0.8), trigger: isPressed) { _,_  in
-                // Only provide feedback if haptics are enabled
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.4, dampingFraction: 0.5, blendDuration: 0), value: configuration.isPressed)
+            .sensoryFeedback(.impact(weight: .light, intensity: 0.5), trigger: configuration.isPressed) { _,_ in
                 return enableHaptics
             }
     }
 }
-
-// Note: The `hideKeyboard()` extension is no longer needed with these modern techniques.

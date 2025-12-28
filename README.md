@@ -22,18 +22,29 @@
 
 ### 🎯 Key Highlights
 
+- **Clinical-Grade UI**: Redesigned "Clinical Journal" aesthetic with editorial serif typography and matte medical-device visuals
 - **Adaptive AI Patients**: Realistic patient interactions powered by Google's Gemini 2.5 Flash with streaming responses
 - **Multi-Language Support**: Full simulation experience in English, Tamil (தமிழ்), and Sinhala (සිංහල) with culturally authentic medical terminology
 - **Role-Based Learning**: Personalized difficulty and feedback based on learner level (MS1-MS4, Intern, Resident, Fellow, Attending, Consultant, EMT, Pharmacist, Nurse, PA Student, NP Student, Physiotherapy Student, Nursing Student, Respiratory Therapist)
 - **Comprehensive Simulation**: Dynamic vital signs with physics-based drift, diagnostic workups, and treatment responses
+- **Resilient Evaluation Engine**: Multi-state evaluation system (evaluating/retry/failed) with intelligent API error classification
 - **Intelligent Evaluation**: AI-driven performance assessment with detailed competency scoring and age-appropriate feedback
-- **Rich Case Library**: Pre-built cases across 12+ medical specialties with varying difficulty levels
+- **Rich Case Library**: Pre-built cases across 12+ medical specialties with varying difficulty levels with atomic upsert synchronization
 - **Secure Authentication**: Email-based user accounts with password hashing and profile customization
-- **Immersive UI/UX**: Haptic feedback, smooth animations, and specialty-themed visual design
+- **Immersive UI/UX**: Custom liquid-physics score indicator, refined haptic feedback patterns, and specialty-themed visual design
 
 ---
 
 ## ✨ Features
+
+### 🎨 Clinical-Grade UI Redesign
+
+- **Clinical Journal Aesthetic**: Editorial serif typography creating an authentic clinical environment
+- **Matte Medical-Device Visuals**: Professional, minimalist interface design resembling actual medical equipment
+- **ClinicalMonitorWidget Integration**: Unified clinical context display across briefing and simulation views
+- **Custom Score Indicator**: Liquid-physics-based score visualization with smooth, organic animations
+- **Tab Switcher Stability**: Fixed layout instability by anchoring matched geometry effects to background modifiers
+- **Refined Haptic Patterns**: Enhanced tactile feedback simulating biometric pulses and clinical alerts
 
 ### 🤖 AI-Powered Patient Simulation
 
@@ -103,6 +114,9 @@
   - Diagnostic Stewardship
   - Harm Avoidance
   - Prioritization & Timeliness
+- **Multi-State Evaluation Engine**: Handles evaluating, retry, and failed states with intelligent error recovery
+- **Intelligent Error Classification**: Distinguishes between transient API failures and critical errors
+- **User-Facing Recovery Paths**: Clear guidance for users when evaluation encounters issues
 
 ### 📈 Performance Analytics
 
@@ -135,16 +149,35 @@
 
 ### 💾 Robust Data Persistence
 
+- **Atomic Upsert Synchronization**: Supports large case library updates while preserving user session history
 - **ScenePhase Monitoring**: Automatic session saving when app backgrounds or terminates
 - **Crash Recovery**: Session state preservation prevents data loss
 - **SwiftData Integration**: Efficient local database with automatic migrations and relationships
 - **Real-Time Sync**: Continuous session updates during active simulations
 - **User-Scoped Data**: All sessions and progress linked to individual user accounts
 - **Profile Image Storage**: Local file system storage with UUID-based filenames
+- **Multi-Case Library Management**: Seamless updates to extensive case collections without data loss
 
 ---
 
 ## 🏗️ Architecture
+
+### Recent Enhancements (Clinical Grade Refactor)
+
+This release introduces a comprehensive redesign and architectural improvements:
+
+**UI/UX Improvements**:
+- Migrated to "Clinical Journal" aesthetic with editorial serif typography
+- Unified `ClinicalMonitorWidget` component across briefing and simulation views
+- Implemented custom liquid-physics score indicator for performance visualization
+- Fixed tab switcher layout instability through proper geometry anchoring
+- Enhanced haptic feedback with biometric pulse and clinical alert patterns
+
+**Logic & Data Enhancements**:
+- Implemented robust multi-state evaluation engine with error classification
+- Added atomic upsert synchronization for large case library updates
+- Improved API resilience with intelligent error recovery paths
+- Enhanced session persistence across app lifecycle events
 
 ### Technology Stack
 
@@ -189,23 +222,31 @@
 
   - **Clinical Priority Sliding Window**: Maintains 100-message context window for optimal AI performance
   - Streaming patient response generation
-  - Professional evaluation with rubric-based scoring
+  - Professional evaluation with rubric-based scoring and error resilience
   - Dynamic case generation from templates
   - Persona-driven prompt engineering
   - **AI Preceptor Hints**: Socratic guidance with progressive difficulty and contextual awareness
+  - **Multi-State Evaluation**: Handles API errors gracefully with retry logic and clear user feedback
 
 - **`DataManager`**:
   - SwiftData integration with scenePhase monitoring
-  - JSON case loading
+  - Atomic upsert operations for large-scale case library updates
+  - JSON case loading with preservation of existing session data
   - Session management with crash recovery
+  - Intelligent synchronization preventing data loss during bulk updates
 
 #### 🔹 ViewModels
 
 - **`ChatViewModel`**: Manages conversation flow, AI streaming, and preceptor hints
 - **`SimulationViewModel`**: Controls patient state transitions, vital signs, and physics engine
 - **`DiagnosticsViewModel`**: Handles test ordering and result revelation
-- **`EvaluationViewModel`**: Generates and presents performance assessments
-- **`NavigationManager`**: Global navigation state management
+- **`EvaluationViewModel`**: 
+  - Multi-state evaluation management (idle, evaluating, success, error)
+  - Graceful error handling with user-facing recovery options
+  - Persistence of evaluation results for offline access
+  - Intelligent retry logic for transient API failures
+- **`NotesViewModel`**: Clinical notes management
+- **`NavigationManager`**: Global navigation state management with evaluation flow integration
 
 #### 🔹 Views
 

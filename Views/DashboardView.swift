@@ -233,7 +233,7 @@ struct DashboardView: View {
                 Button(action: {
                     navigationManager.selectedTab = .profile
                 }) {
-                    AnimatedAvatarView(isBirthday: isBirthday, size: 72)
+                    AnimatedAvatarView(isBirthday: isBirthday, size: 84)
                 }
                 .buttonStyle(.plain)
             }

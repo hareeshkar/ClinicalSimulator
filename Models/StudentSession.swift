@@ -3,6 +3,15 @@
 import Foundation
 import SwiftData
 
+// ✅ NEW: Enum to track evaluation lifecycle states
+enum EvaluationStatus: String, CaseIterable {
+    case notStarted = "not_started"
+    case evaluating = "evaluating"
+    case completed = "completed"
+    case failed = "failed"
+    case retryNeeded = "retry_needed"
+}
+
 // ✅ NEW: A struct to hold a single, structured differential diagnosis item.
 struct DifferentialItem: Codable, Hashable, Identifiable {
     var id = UUID() // For SwiftUI lists
@@ -25,6 +34,11 @@ class StudentSession {
     var caseId: String
     var isCompleted: Bool
     var score: Double?
+    
+    // ✅ NEW: Track evaluation status for error handling and retry logic
+    var evaluationStatus: String = EvaluationStatus.notStarted.rawValue
+    var evaluationErrorMessage: String?
+    var evaluationAttempts: Int = 0
 
     // ✅ ADD THIS RELATIONSHIP
     // This is the "many-to-one" side: many sessions can belong to one user.

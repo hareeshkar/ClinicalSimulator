@@ -13,6 +13,7 @@
 		935385A12E6ADBF100CD93C2 /* EvaluationResult.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935385A02E6ADBF000CD93C2 /* EvaluationResult.swift */; };
 		935385A32E6ADC0200CD93C2 /* EvaluationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935385A22E6ADBFD00CD93C2 /* EvaluationView.swift */; };
 		935385A52E6ADC5800CD93C2 /* EvaluationViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 935385A42E6ADC5600CD93C2 /* EvaluationViewModel.swift */; };
+		9354C8CF2EFDA921009F0687 /* CategoryCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9354C8CE2EFDA91E009F0687 /* CategoryCardView.swift */; };
 		93B313332E6AFBB4007FD59A /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B313322E6AFBB3007FD59A /* MainTabView.swift */; };
 		93B313352E6AFBC2007FD59A /* CaseLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B313342E6AFBC1007FD59A /* CaseLibraryView.swift */; };
 		93B313372E6AFBCC007FD59A /* ReportsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93B313362E6AFBCB007FD59A /* ReportsView.swift */; };
@@ -64,6 +65,7 @@
 		935385A02E6ADBF000CD93C2 /* EvaluationResult.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationResult.swift; sourceTree = "<group>"; };
 		935385A22E6ADBFD00CD93C2 /* EvaluationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationView.swift; sourceTree = "<group>"; };
 		935385A42E6ADC5600CD93C2 /* EvaluationViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EvaluationViewModel.swift; sourceTree = "<group>"; };
+		9354C8CE2EFDA91E009F0687 /* CategoryCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryCardView.swift; sourceTree = "<group>"; };
 		93B313322E6AFBB3007FD59A /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
 		93B313342E6AFBC1007FD59A /* CaseLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaseLibraryView.swift; sourceTree = "<group>"; };
 		93B313362E6AFBCB007FD59A /* ReportsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReportsView.swift; sourceTree = "<group>"; };
@@ -256,6 +258,7 @@
 				93B3134A2E6C1628007FD59A /* CaseListItemView.swift */,
 				93B313462E6C1212007FD59A /* CaseCategoryListView.swift */,
 				93B313442E6C11C5007FD59A /* CategoryCardView.swift */,
+				9354C8CE2EFDA91E009F0687 /* CategoryCardView.swift */,
 				93B313402E6BDFF3007FD59A /* ProfileView.swift */,
 				93B313362E6AFBCB007FD59A /* ReportsView.swift */,
 				93B313342E6AFBC1007FD59A /* CaseLibraryView.swift */,
@@ -371,6 +374,7 @@
 				9353859D2E6AD2C300CD93C2 /* DiagnosticsViewModel.swift in Sources */,
 				93E93B332EBD269700FD5B1B /* UserProfile.swift in Sources */,
 				93B313412E6BE007007FD59A /* ProfileView.swift in Sources */,
+				9354C8CF2EFDA921009F0687 /* CategoryCardView.swift in Sources */,
 				93B3134B2E6C1629007FD59A /* CaseListItemView.swift in Sources */,
 				93F959B12E69967C00ABFEC2 /* DashboardView.swift in Sources */,
 				935385A12E6ADBF100CD93C2 /* EvaluationResult.swift in Sources */,

@@ -1,67 +1,66 @@
-// Views/CaseBriefingView.swift
-
 import SwiftUI
 import UIKit
 import os.log
 
-// ✅ LOGGING: Create a dedicated logger for CaseBriefingView
+// MARK: - 🎨 CHART DESIGN TOKENS
+private enum ChartTheme {
+    static let background = Color(.systemGroupedBackground)
+    static let cardBackground = Color(.secondarySystemGroupedBackground)
+    static let primaryText = Color.primary
+    static let secondaryText = Color.secondary
+    static let accent = Color.blue // Standard medical blue
+    static let critical = Color.red
+    static let vitalsBg = Color(.systemGray6) // Adaptive background for vitals monitor
+    static let vitalsText = Color.primary
+}
+
+// ✅ LOGGING
 private let logger = Logger(subsystem: "com.hareeshkar.ClinicalSimulator", category: "CaseBriefingView")
 
 struct CaseBriefingView: View {
-    // MARK: - Properties (Backend-driven)
+    // MARK: - Properties
     let patientCase: PatientCase
     let onBegin: (() -> Void)?
     var isReferenceMode: Bool = false
     
     @Environment(\.dismiss) private var dismiss
-    
-    // ✅ CRITICAL FIX: Store the case ID to track when the sheet is reinitializing
     private let caseIdentifier: String
     
-    // ✅ FIX: Make LoadingState conform to Equatable
+    // Loading State
     private enum LoadingState: Equatable {
         case loading
         case success(EnhancedCaseDetail)
         case error
         
-        // ✅ CUSTOM EQUATABLE IMPLEMENTATION to handle comparison
         static func == (lhs: LoadingState, rhs: LoadingState) -> Bool {
             switch (lhs, rhs) {
-            case (.loading, .loading):
-                logger.log("🔍 Comparing: loading == loading → true")
-                return true
-            case (.error, .error):
-                logger.log("🔍 Comparing: error == error → true")
-                return true
-            case (.success(let lhsDetail), .success(let rhsDetail)):
-                let result = lhsDetail.metadata.caseId == rhsDetail.metadata.caseId
-                logger.log("🔍 Comparing: success(\(lhsDetail.metadata.caseId, privacy: .public)) == success(\(rhsDetail.metadata.caseId, privacy: .public)) → \(result)")
-                return result
-            default:
-                logger.log("🔍 Comparing: different states → false")
-                return false
+            case (.loading, .loading), (.error, .error): return true
+            case (.success(let a), .success(let b)): return a.metadata.caseId == b.metadata.caseId
+            default: return false
             }
         }
     }
     
     @State private var state: LoadingState = .loading
-    // ✅ CRITICAL FIX: Explicitly name this state and add logging
-    @State private var selectedHistorySection: HistorySection = .presentIllness
+    @State private var selectedTab: HistorySection = .presentIllness
+    @State private var monitorExpanded: Bool = true
     @State private var showContent: Bool = false
-    
-    // ✅ NEW: Track initialization for debugging
     @State private var initializationId: UUID = UUID()
-    
-    // ✅ NEW: Track view lifecycle events
-    @State private var appearCount: Int = 0
-    @State private var disappearCount: Int = 0
 
     enum HistorySection: String, CaseIterable, Identifiable {
-        case presentIllness = "Present Illness"
-        case pastHistory = "Past History"
-        case physicalExam = "Physical Exam"
+        case presentIllness = "Story"
+        case pastHistory = "History"
+        case physicalExam = "Exam"
         
         var id: String { self.rawValue }
+        
+        var fullName: String {
+            switch self {
+            case .presentIllness: return "Patient Story (HPI)"
+            case .pastHistory: return "Medical History"
+            case .physicalExam: return "Physical Exam"
+            }
+        }
     }
 
     init(patientCase: PatientCase, onBegin: (() -> Void)? = nil, isReferenceMode: Bool = false) {
@@ -69,8 +68,6 @@ struct CaseBriefingView: View {
         self.onBegin = onBegin
         self.isReferenceMode = isReferenceMode
         self.caseIdentifier = patientCase.caseId
-        
-        logger.log("🟢 [INIT] CaseBriefingView.init() called for case: \(patientCase.caseId, privacy: .public), isReferenceMode: \(isReferenceMode)")
     }
     
     // MARK: - Main Body
@@ -80,398 +77,507 @@ struct CaseBriefingView: View {
                 mainContent
                 
                 if !isReferenceMode, case .success = state {
-                    beginButton
+                    startCaseButton
                 }
             }
-            .background(Color(.systemGroupedBackground))
+            .background(ChartTheme.background.ignoresSafeArea())
             .navigationTitle("Patient Chart")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { toolbarContent }
             .onAppear(perform: handleOnAppear)
-            // ✅ NEW: Track when the sheet appears to detect re-initialization
-            .onDisappear(perform: handleOnDisappear)
-            // ✅ NEW: Monitor state changes for debugging
-            .onChange(of: selectedHistorySection) { oldValue, newValue in
-                logger.log("📊 [STATE-CHANGE] selectedHistorySection: \(oldValue.rawValue, privacy: .public) → \(newValue.rawValue, privacy: .public)")
-            }
-            .onChange(of: state) { _, newState in
-                logger.log("📊 [STATE-CHANGE] LoadingState changed:")
-                switch newState {
-                case .loading:
-                    logger.log("  ⏳ New State: LOADING")
-                case .success(let detail):
-                    logger.log("  ✅ New State: SUCCESS (Case: \(detail.metadata.caseId, privacy: .public))")
-                case .error:
-                    logger.log("  ❌ New State: ERROR")
-                }
-            }
-        }
-        // ✅ CRITICAL FIX: Add id() to prevent sheet reinitialization when parent updates
-        .id(initializationId)
-        .onReceive(Timer.publish(every: 5.0, on: .main, in: .common).autoconnect()) { _ in
-            logger.log("⏱️ [HEARTBEAT] CaseBriefingView - Appear: \(self.appearCount), Disappear: \(self.disappearCount), State: \(self.stateDescription)")
+            .id(initializationId)
         }
     }
     
-    private var stateDescription: String {
-        switch state {
-        case .loading:
-            return "loading"
-        case .success:
-            return "success"
-        case .error:
-            return "error"
-        }
-    }
-    
-    // MARK: - ViewBuilder Sub-components
+    // MARK: - ViewBuilder Content
     
     @ViewBuilder
     private var mainContent: some View {
         ScrollView {
-            switch state {
-            case .loading:
-                SkeletonLoadingView()
-                    .onAppear {
-                        logger.log("🎨 [RENDERING] Showing SkeletonLoadingView")
-                    }
-            case .success(let detail):
-                VStack(alignment: .leading, spacing: 20) {
-                    patientHeader(for: detail)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.05), value: showContent)
+            VStack(spacing: 24) {
+                switch state {
+                case .loading:
+                    ChartSkeletonLoader()
+                        .transition(.opacity)
+                case .success(let detail):
+                    // 1. Patient Header
+                    PatientHeaderCard(detail: detail)
+                        .padding(.top, 16)
                     
-                    vitalsSection(for: detail.initialPresentation.vitals)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.1), value: showContent)
+                    // 2. Clinical Monitor Widget - Full immersive experience with haptics & ECG
+                    ClinicalMonitorWidget(
+                        patientProfile: detail.patientProfile,
+                        vitals: detail.initialPresentation.vitals,
+                        isExpanded: $monitorExpanded,
+                        onChartAction: nil,
+                        showChartButton: false
+                    )
                     
-                    // ✅ CRITICAL FIX: Use explicit binding and id() for stable picker state
-                    historySection(for: detail)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.15), value: showContent)
-                        // Prevent re-initialization of this section
-                        .id("history-\(caseIdentifier)-\(selectedHistorySection.id)")
-                }
-                .opacity(showContent ? 1 : 0)
-                .padding()
-                .onAppear {
-                    logger.log("📄 [RENDERING] Showing success content - SelectedSection: \(self.selectedHistorySection.rawValue, privacy: .public), CaseID: \(detail.metadata.caseId, privacy: .public)")
-                }
-            case .error:
-                ContentUnavailableView("Unable to Load Chart", systemImage: "xmark.octagon.fill", description: Text("The patient chart could not be loaded. Please try again."))
-                    .padding(.top, 100)
-                    .onAppear {
-                        logger.log("⚠️ [RENDERING] Showing error state")
+                    // 3. Clinical History (Restored Tab Interface)
+                    ClinicalHistorySection(detail: detail, selectedTab: $selectedTab)
+                    
+                    // Padding for FAB
+                    if !isReferenceMode {
+                        Spacer().frame(height: 80)
                     }
-            }
-        }
-        .safeAreaPadding(.bottom, 80)
-    }
-    
-    @ViewBuilder
-    private func patientHeader(for detail: EnhancedCaseDetail) -> some View {
-        let specialtyColor = SpecialtyDetailsProvider.color(for: detail.metadata.specialty)
-        
-        let _ = logger.log("🏥 [HEADER] Building header for: \(detail.patientProfile.name, privacy: .public), Specialty: \(detail.metadata.specialty, privacy: .public)")
-        
-        return VStack(alignment: .leading, spacing: 10) {
-            Text(detail.patientProfile.name)
-                .font(.title.bold())
-                .foregroundStyle(.white)
-                
-            Text("\(detail.patientProfile.age) • \(detail.patientProfile.gender)")
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.white.opacity(0.85))
-                
-            Label(detail.initialPresentation.chiefComplaint, systemImage: "exclamationmark.bubble.fill")
-                .font(.subheadline)
-                .foregroundStyle(.white)
-                .padding(.top, 6)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(
-            LinearGradient(
-                gradient: Gradient(colors: [specialtyColor.opacity(0.8), specialtyColor]),
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(16)
-        .shadow(color: specialtyColor.opacity(0.35), radius: 8, y: 4)
-    }
-
-    @ViewBuilder
-    private func vitalsSection(for vitals: Vitals) -> some View {
-        let _ = logger.log("💓 [VITALS] Building vitals section - HR: \(vitals.heartRate ?? 0), RR: \(vitals.respiratoryRate ?? 0), BP: \(vitals.bloodPressure ?? "N/A", privacy: .public), O2: \(vitals.oxygenSaturation ?? 0)")
-        
-        return VStack(alignment: .leading, spacing: 10) {
-            Text("Initial Vitals").font(.headline.weight(.semibold))
-            VitalsGridView(vitals: vitals)
-        }
-        .padding()
-        .background(.background)
-        .cornerRadius(12)
-    }
-    
-    // ✅ CRITICAL FIX: Restructure for stable state management
-    @ViewBuilder
-    private func historySection(for detail: EnhancedCaseDetail) -> some View {
-        let _ = logger.log("📚 [HISTORY] Building history section - Current selection: \(selectedHistorySection.rawValue, privacy: .public)")
-        
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Clinical History").font(.headline.weight(.semibold))
-
-            // ✅ KEY FIX: Use explicit Picker with stable selection binding
-            Picker("History Section", selection: $selectedHistorySection) {
-                ForEach(HistorySection.allCases) { section in
-                    Text(section.rawValue)
-                        .tag(section)
+                case .error:
+                    ChartErrorView()
                 }
             }
-            .pickerStyle(.segmented)
-            .onChange(of: selectedHistorySection) { oldValue, newValue in
-                logger.log("🔄 [PICKER-CHANGE] Selection changed: \(oldValue.rawValue, privacy: .public) → \(newValue.rawValue, privacy: .public)")
-            }
-
-            // ✅ FIX: Use dedicated ViewBuilder function for content
-            historyContent(for: detail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding()
-                .background(.background)
-                .cornerRadius(12)
-                .animation(.easeInOut(duration: 0.3), value: selectedHistorySection)
+            .padding(.horizontal, 16)
+            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: state)
         }
+        .scrollDismissesKeyboard(.interactively)
     }
     
     @ViewBuilder
-    private func historyContent(for detail: EnhancedCaseDetail) -> some View {
-        switch selectedHistorySection {
-        case .presentIllness:
-            VStack(alignment: .leading, spacing: 8) {
-                Text(detail.initialPresentation.history.presentIllness)
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-            }
-            .transition(.opacity)
-            .onAppear {
-                logger.log("📖 [HISTORY-SECTION] Rendered: Present Illness")
-            }
-            
-        case .pastHistory:
-            VStack(alignment: .leading, spacing: 14) {
-                let past = detail.initialPresentation.history.pastMedicalHistory
-                InfoRowView(label: "Medical History", content: past.medicalHistory)
-                InfoRowView(label: "Surgical History", content: past.surgicalHistory)
-                InfoRowView(label: "Medications", content: past.medications)
-                InfoRowView(label: "Allergies", content: past.allergies, isCritical: true)
-                InfoRowView(label: "Social History", content: past.socialHistory)
-            }
-            .transition(.opacity)
-            .onAppear {
-                logger.log("📖 [HISTORY-SECTION] Rendered: Past History")
-            }
-            
-        case .physicalExam:
-            VStack(alignment: .leading, spacing: 14) {
-                let findings = detail.dynamicState.states["initial"]?.physicalExamFindings?.sorted(by: <) ?? []
-                
-                if findings.isEmpty {
-                    Text("No specific physical exam findings noted in the initial presentation.")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(findings, id: \.key) { key, value in
-                        InfoRowView(label: key, content: value)
-                    }
+    private var startCaseButton: some View {
+        VStack {
+            Spacer()
+            Button(action: {
+                let generator = UIImpactFeedbackGenerator(style: .heavy)
+                generator.impactOccurred()
+                onBegin?()
+            }) {
+                HStack(spacing: 12) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 20, weight: .bold))
+                    Text("Start Case")
+                        .font(.system(size: 18, weight: .bold))
                 }
-            }
-            .transition(.opacity)
-            .onAppear {
-                let findings = detail.dynamicState.states["initial"]?.physicalExamFindings?.sorted(by: <) ?? []
-                logger.log("🔍 [PHYSICAL-EXAM] Found \(findings.count) examination findings")
-                logger.log("📖 [HISTORY-SECTION] Rendered: Physical Exam")
-            }
-        }
-    }
-    
-    @ViewBuilder
-    private var beginButton: some View {
-        Button(action: {
-            logger.log("🎬 [USER-ACTION] Begin Simulation button tapped")
-            let generator = UIImpactFeedbackGenerator(style: .heavy)
-            generator.prepare()
-            generator.impactOccurred()
-            onBegin?()
-        }) {
-            Label("Begin Simulation", systemImage: "play.fill")
-                .font(.headline)
-                .foregroundStyle(.white)
-                .padding(.vertical, 12)
+                .foregroundColor(.white)
+                .padding(.vertical, 16)
                 .frame(maxWidth: .infinity)
-                .background(Color.accentColor, in: Capsule())
-                .shadow(color: Color.black.opacity(0.12), radius: 6, x: 0, y: 3)
+                .background(ChartTheme.accent)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .shadow(color: ChartTheme.accent.opacity(0.3), radius: 10, x: 0, y: 5)
+            }
+            .padding(.horizontal, 20)
+            .padding(.bottom, 20)
         }
-        .padding(.horizontal, 24)
+        .background(
+            VStack {
+                Spacer()
+                LinearGradient(colors: [ChartTheme.background.opacity(0), ChartTheme.background], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 140)
+            }
+            .ignoresSafeArea()
+        )
     }
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
-            Button("Done") {
-                logger.log("✖️ [USER-ACTION] Done button tapped")
-                dismiss()
-            }
-            .fontWeight(.medium)
+            Button("Close") { dismiss() }
+                .fontWeight(.medium)
         }
     }
     
-    // MARK: - Lifecycle Handlers
+    // MARK: - Lifecycle
     
     private func handleOnAppear() {
-        appearCount += 1
-        logger.log("🟢 [LIFECYCLE-APPEAR] CaseBriefingView.onAppear() #\(self.appearCount)")
-        logger.log("  InitID: \(self.initializationId.uuidString, privacy: .public)")
-        logger.log("  SelectedSection: \(self.selectedHistorySection.rawValue, privacy: .public)")
-        logger.log("  CurrentState: \(self.stateDescription)")
-        logger.log("  IsReferenceMode: \(self.isReferenceMode)")
-        logger.log("  CaseID: \(self.caseIdentifier, privacy: .public)")
-        
-        parseCaseDetails()
-    }
-    
-    private func handleOnDisappear() {
-        disappearCount += 1
-        logger.log("🔴 [LIFECYCLE-DISAPPEAR] CaseBriefingView.onDisappear() #\(self.disappearCount)")
-        logger.log("  InitID: \(self.initializationId.uuidString, privacy: .public)")
-        logger.log("  SelectedSection: \(self.selectedHistorySection.rawValue, privacy: .public)")
-        logger.log("  CurrentState: \(self.stateDescription)")
-    }
-    
-    // MARK: - Data Loading
-    @MainActor
-    private func parseCaseDetails() {
-        logger.log("⏳ [DATA-LOADING] Starting to parse case details for: \(self.caseIdentifier, privacy: .public)")
-        let fullCaseJSON = patientCase.fullCaseJSON
-        logger.log("📦 [DATA-LOADING] JSON length: \(fullCaseJSON.count) characters")
-        
+        guard case .loading = state else { return }
         Task {
-            do {
-                logger.log("🔄 [DATA-DECODING] Decoding patient data...")
-                let result = try await parsePatientData(fullCaseJSON: fullCaseJSON)
-                
-                await MainActor.run {
-                    logger.log("✅ [DATA-SUCCESS] Patient data decoded successfully")
-                    logger.log("  Case Title: \(result.metadata.title, privacy: .public)")
-                    logger.log("  Specialty: \(result.metadata.specialty, privacy: .public)")
-                    logger.log("  Difficulty: \(result.metadata.difficulty, privacy: .public)")
-                    logger.log("  States Count: \(result.dynamicState.states.count)")
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            await parseCaseDetails()
+        }
+    }
+    
+    @MainActor
+    private func parseCaseDetails() async {
+        guard let data = patientCase.fullCaseJSON.data(using: .utf8) else {
+            self.state = .error
+            return
+        }
+        
+        do {
+            let detail = try JSONDecoder().decode(EnhancedCaseDetail.self, from: data)
+            withAnimation {
+                self.state = .success(detail)
+                self.showContent = true
+            }
+        } catch {
+            self.state = .error
+        }
+    }
+}
+
+// MARK: - 🏥 COMPONENT: PATIENT HEADER
+struct PatientHeaderCard: View {
+    let detail: EnhancedCaseDetail
+    
+    private var specialtyColor: Color {
+        SpecialtyDetailsProvider.color(for: detail.metadata.specialty)
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // 1. Identity Section (Compact)
+            HStack(alignment: .center, spacing: 16) {
+                // Clinical Avatar (Refined Size)
+                ZStack {
+                    Circle()
+                        .fill(specialtyColor.opacity(0.1))
+                        .frame(width: 60, height: 60)
                     
-                    self.state = .success(result)
-                    withAnimation {
-                        self.showContent = true
+                    Text(String(detail.patientProfile.name.prefix(1)))
+                        .font(.system(size: 28, weight: .black, design: .rounded))
+                        .foregroundStyle(specialtyColor)
+                }
+                .overlay(
+                    Circle()
+                        .stroke(specialtyColor.opacity(0.15), lineWidth: 1)
+                )
+                
+                // Patient Record Details
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(detail.patientProfile.name)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundStyle(ChartTheme.primaryText)
+                        .minimumScaleFactor(0.9)
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 6) {
+                        DemographicBadge(text: "\(detail.patientProfile.age)", color: specialtyColor)
+                        DemographicBadge(text: detail.patientProfile.gender, color: specialtyColor)
+                        SpecialtyCapsule(specialty: detail.metadata.specialty, color: specialtyColor)
                     }
                 }
-            } catch {
-                await MainActor.run {
-                    logger.error("❌ [DATA-ERROR] CRITICAL: Failed to load CaseBriefingView")
-                    logger.error("  Error: \(error.localizedDescription, privacy: .public)")
-                    logger.error("  Error Type: \(type(of: error), privacy: .public)")
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 16)
+            
+            // Subtle Clinical Divider
+            Rectangle()
+                .fill(specialtyColor.opacity(0.08))
+                .frame(height: 1)
+                .padding(.horizontal, 16)
+            
+            // 2. Clinical Presentation (Streamlined)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 6) {
+                    Image(systemName: "waveform.path.ecg")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(specialtyColor.opacity(0.8))
                     
-                    self.state = .error
+                    Text("PRESENTING COMPLAINT")
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .foregroundStyle(specialtyColor.opacity(0.6))
+                        .tracking(1.2)
+                }
+                
+                Text(detail.initialPresentation.chiefComplaint)
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundStyle(ChartTheme.primaryText.opacity(0.85))
+                    .lineSpacing(3)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(16)
+        }
+        .background(
+            ZStack {
+                ChartTheme.cardBackground
+                
+                // Atmospheric Medical Grid (More Subtle)
+                GeometryReader { geo in
+                    Path { path in
+                        let step: CGFloat = 30
+                        for x in stride(from: 0, to: geo.size.width, by: step) {
+                            path.move(to: CGPoint(x: x, y: 0))
+                            path.addLine(to: CGPoint(x: x, y: geo.size.height))
+                        }
+                        for y in stride(from: 0, to: geo.size.height, by: step) {
+                            path.move(to: CGPoint(x: 0, y: y))
+                            path.addLine(to: CGPoint(x: geo.size.width, y: y))
+                        }
+                    }
+                    .stroke(specialtyColor.opacity(0.02), lineWidth: 0.5)
+                }
+            }
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.06), radius: 10, x: 0, y: 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(specialtyColor.opacity(0.05), lineWidth: 1)
+        )
+    }
+}
+
+// MARK: - 🏥 REFINED SUB-COMPONENTS
+struct DemographicBadge: View {
+    let text: String
+    let color: Color
+    
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .bold, design: .rounded))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(color.opacity(0.08))
+            .clipShape(Capsule())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct SpecialtyCapsule: View {
+    let specialty: String
+    let color: Color
+    
+    var body: some View {
+        Text(specialty.uppercased())
+            .font(.system(size: 9, weight: .black, design: .monospaced))
+            .foregroundStyle(color)
+            .tracking(0.8)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(
+                ZStack {
+                    color.opacity(0.1)
+                    Capsule().stroke(color.opacity(0.2), lineWidth: 0.5)
+                }
+            )
+            .clipShape(Capsule())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+// MARK: -  COMPONENT: CLINICAL HISTORY (TABBED)
+struct ClinicalHistorySection: View {
+    let detail: EnhancedCaseDetail
+    @Binding var selectedTab: CaseBriefingView.HistorySection
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // ✅ THE RESTORED SEGMENTED PICKER
+            Picker("History Section", selection: $selectedTab) {
+                ForEach(CaseBriefingView.HistorySection.allCases) { section in
+                    Text(section.rawValue)
+                        .tag(section)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
+            
+            Divider()
+                .opacity(0.3)
+            
+            // Content Area
+            VStack(alignment: .leading, spacing: 20) {
+                HStack(spacing: 8) {
+                    Rectangle()
+                        .fill(ChartTheme.accent)
+                        .frame(width: 3, height: 14)
+                    
+                    Text(selectedTab.fullName)
+                        .font(.system(size: 12, weight: .black, design: .monospaced))
+                        .foregroundStyle(ChartTheme.accent)
+                        .textCase(.uppercase)
+                        .tracking(1.5)
+                }
+                
+                Group {
+                    switch selectedTab {
+                    case .presentIllness:
+                        Text(detail.initialPresentation.history.presentIllness)
+                            .font(.system(size: 16, weight: .medium, design: .serif))
+                            .lineSpacing(8)
+                            .foregroundStyle(ChartTheme.primaryText.opacity(0.9))
+                    case .pastHistory:
+                        PastHistoryView(history: detail.initialPresentation.history.pastMedicalHistory)
+                    case .physicalExam:
+                        PhysicalExamView(findings: detail.dynamicState.states["initial"]?.physicalExamFindings ?? [:])
+                    }
+                }
+                .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .bottom)), removal: .opacity))
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(ChartTheme.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: Color.black.opacity(0.05), radius: 12, y: 6)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedTab)
+    }
+}
+
+// MARK: - 🧱 SUB-COMPONENTS FOR HISTORY
+struct PastHistoryView: View {
+    let history: StructuredPastHistory
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            InfoBlock(label: "Medical History", content: history.medicalHistory, icon: "cross.case.fill")
+            InfoBlock(label: "Surgical History", content: history.surgicalHistory, icon: "scissors")
+            InfoBlock(label: "Medications", content: history.medications, icon: "pill.fill")
+            InfoBlock(label: "Allergies", content: history.allergies, icon: "exclamationmark.triangle.fill", isAlert: true)
+            InfoBlock(label: "Social History", content: history.socialHistory, icon: "person.2.fill")
+        }
+    }
+}
+
+struct PhysicalExamView: View {
+    let findings: [String: String]
+    
+    var body: some View {
+        if findings.isEmpty {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.text.magnifyingglass")
+                    .foregroundStyle(Color.secondary.opacity(0.5))
+                Text("No specific physical exam findings recorded.")
+                    .font(.system(size: 15, design: .serif))
+                    .italic()
+                    .foregroundStyle(Color.secondary)
+            }
+            .padding(.vertical, 10)
+        } else {
+            VStack(alignment: .leading, spacing: 20) {
+                ForEach(findings.keys.sorted(), id: \.self) { key in
+                    InfoBlock(label: key, content: findings[key] ?? "", icon: "stethoscope")
                 }
             }
         }
     }
-    
-    private func parsePatientData(fullCaseJSON: String) async throws -> EnhancedCaseDetail {
-        logger.log("🔍 [PARSE] Converting JSON string to Data...")
-        
-        guard let fullCaseData = fullCaseJSON.data(using: .utf8) else {
-            logger.error("❌ [PARSE] Failed to convert JSON string to Data")
-            throw URLError(.badServerResponse)
-        }
-        
-        logger.log("✅ [PARSE] JSON converted to Data, size: \(fullCaseData.count) bytes")
-        
-        logger.log("🔍 [PARSE] Decoding ground truth...")
-        let groundTruth = try JSONDecoder().decode(EnhancedCaseDetail.self, from: fullCaseData)
-        logger.log("✅ [PARSE] Ground truth decoded - Case ID: \(groundTruth.metadata.caseId, privacy: .public)")
-        
-        logger.log("🔍 [PARSE] Generating student-facing JSON...")
-        let studentJSON = groundTruth.studentFacingJSON()
-        logger.log("✅ [PARSE] Student JSON generated, size: \(studentJSON.count) characters")
-        
-        logger.log("🔍 [PARSE] Converting student JSON to Data...")
-        guard let studentSafeData = studentJSON.data(using: .utf8) else {
-            logger.error("❌ [PARSE] Failed to convert student JSON to Data")
-            throw URLError(.cannotDecodeContentData)
-        }
-        
-        logger.log("✅ [PARSE] Student JSON converted to Data, size: \(studentSafeData.count) bytes")
-        
-        logger.log("🔍 [PARSE] Decoding student-safe case detail...")
-        let studentDetail = try JSONDecoder().decode(EnhancedCaseDetail.self, from: studentSafeData)
-        logger.log("✅ [PARSE] Student-safe case detail decoded successfully")
-        
-        return studentDetail
-    }
 }
 
-// MARK: - Helper Views
-
-struct InfoRowView: View {
+struct InfoBlock: View {
     let label: String
     let content: String
-    var isCritical: Bool = false
-
-    private var shouldHighlight: Bool {
-        isCritical && !content.localizedCaseInsensitiveContains("none")
-    }
+    var icon: String? = nil
+    var isAlert: Bool = false
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label)
-                .font(.headline)
-                .foregroundStyle(.primary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                if let icon = icon {
+                    Image(systemName: icon)
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(isAlert ? Color.red : ChartTheme.accent.opacity(0.7))
+                }
+                
+                Text(label.uppercased())
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(isAlert ? Color.red : Color.secondary)
+                    .tracking(1.2)
+            }
+            
             Text(content)
-                .font(.body)
-                .foregroundStyle(shouldHighlight ? .red : .secondary)
+                .font(.system(size: 15, weight: .medium, design: .serif))
+                .foregroundStyle(ChartTheme.primaryText.opacity(0.85))
+                .lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.leading, icon != nil ? 18 : 0)
         }
     }
 }
 
-struct SkeletonLoadingView: View {
-    @State private var isShimmering: Bool = false
-    private let shimmerColor = Color(.systemGray5)
-    
+// MARK: - 🦴 LOADING SKELETON
+struct ChartSkeletonLoader: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            RoundedRectangle(cornerRadius: 16).fill(shimmerColor).frame(height: 140)
-            RoundedRectangle(cornerRadius: 12).fill(shimmerColor).frame(height: 120)
-            RoundedRectangle(cornerRadius: 12).fill(shimmerColor).frame(height: 200)
+        VStack(alignment: .leading, spacing: 24) {
+            // Header Skeleton
+            HStack(spacing: 16) {
+                Circle().fill(Color(.systemGray5)).frame(width: 60, height: 60)
+                VStack(alignment: .leading, spacing: 8) {
+                    RoundedRectangle(cornerRadius: 4).fill(Color(.systemGray5)).frame(width: 180, height: 20)
+                    RoundedRectangle(cornerRadius: 4).fill(Color(.systemGray5)).frame(width: 120, height: 14)
+                }
+            }
+            .padding(16)
+            .background(ChartTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            
+            // Monitor Skeleton
+            RoundedRectangle(cornerRadius: 20).fill(Color(.systemGray5)).frame(height: 160)
+            
+            // History Skeleton
+            VStack(alignment: .leading, spacing: 16) {
+                RoundedRectangle(cornerRadius: 4).fill(Color(.systemGray5)).frame(width: 100, height: 12)
+                RoundedRectangle(cornerRadius: 8).fill(Color(.systemGray5)).frame(height: 200)
+            }
+            .padding(20)
+            .background(ChartTheme.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 20))
         }
-        .padding()
-        .shimmering(isActive: isShimmering)
-        .onAppear { isShimmering = true }
+        .padding(.top, 20)
+        .shimmering()
     }
 }
 
-extension View {
-    @ViewBuilder
-    func shimmering(isActive: Bool) -> some View {
-        if isActive {
-            self
-                .overlay(
-                    LinearGradient(
-                        gradient: Gradient(colors: [.clear, .white.opacity(0.4), .clear]),
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .rotationEffect(.degrees(110))
-                    .offset(x: -150)
-                    .animation(.linear(duration: 2).repeatForever(autoreverses: false), value: isActive)
-                )
-                .clipped()
-        } else {
-            self
+struct ChartErrorView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(Color.red.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                Image(systemName: "exclamationmark.shield.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(Color.red.opacity(0.8))
+            }
+            
+            VStack(spacing: 8) {
+                Text("CHART ACCESS DENIED")
+                    .font(.system(size: 14, weight: .black, design: .monospaced))
+                    .tracking(2)
+                Text("Unable to synchronize with clinical database.")
+                    .font(.system(size: 15, weight: .medium, design: .serif))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Button(action: { /* Retry logic */ }) {
+                Text("RETRY CONNECTION")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 12)
+                    .background(Color.primary.opacity(0.05))
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(PlainButtonStyle())
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 100)
+    }
+}
+
+// Helper modifier for shimmer effect
+extension View {
+    func shimmering() -> some View {
+        self.modifier(ShimmerEffect())
+    }
+}
+
+struct ShimmerEffect: ViewModifier {
+    @State private var phase: CGFloat = -0.5
+    
+    func body(content: Content) -> some View {
+        content
+            .mask(
+                GeometryReader { geo in
+                    Rectangle()
+                        .fill(
+                            LinearGradient(
+                                gradient: Gradient(stops: [
+                                    .init(color: .white.opacity(0.2), location: phase),
+                                    .init(color: .white.opacity(0.6), location: phase + 0.1),
+                                    .init(color: .white.opacity(0.2), location: phase + 0.2)
+                                ]),
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                }
+            )
+            .onAppear {
+                withAnimation(Animation.linear(duration: 2.0).repeatForever(autoreverses: false)) {
+                    phase = 1.5
+                }
+            }
     }
 }

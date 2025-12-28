@@ -267,8 +267,33 @@ struct ProfileView: View {
     }
     
     private func performLogout() { Task { authService.logout() } }
-    private func resetAllProgress() { try? modelContext.delete(model: StudentSession.self) }
-    private func reloadSampleCases() { try? modelContext.delete(model: PatientCase.self); DataManager.loadSampleData(modelContext: modelContext) }
+    
+    private func resetAllProgress() {
+        let userId = currentUser.id
+        let predicate = #Predicate<StudentSession> { $0.user?.id == userId }
+        let descriptor = FetchDescriptor(predicate: predicate)
+        
+        do {
+            let sessionsToDelete = try modelContext.fetch(descriptor)
+            for session in sessionsToDelete {
+                modelContext.delete(session)
+            }
+            try modelContext.save()
+            print("✅ All progress reset for user: \(currentUser.fullName)")
+        } catch {
+            print("❌ Error resetting progress: \(error.localizedDescription)")
+        }
+    }
+    
+    private func reloadSampleCases() {
+        do {
+            // Smart upsert: updates changed cases, adds new ones, preserves relationships
+            try DataManager.reloadSampleCasesUpsert(modelContext: modelContext)
+            print("✅ Sample cases reloaded with smart upsert")
+        } catch {
+            print("❌ Error reloading cases: \(error.localizedDescription)")
+        }
+    }
     
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
