@@ -10,22 +10,24 @@ import CoreHaptics
 class SignUpInteractionContext: ObservableObject {
     @Published var intensity: Double = 0.0
     private var lastInputTime: Date = Date()
+    private var lastUpdateTime: Date = Date()
     
     func registerInteraction() {
         let now = Date()
         let interval = now.timeIntervalSince(lastInputTime)
         lastInputTime = now
         
+        // ✅ FIX: Throttle updates to prevent constant animations
+        let timeSinceLastUpdate = now.timeIntervalSince(lastUpdateTime)
+        guard timeSinceLastUpdate > 0.3 else { return }
+        lastUpdateTime = now
+        
         let rawIntensity = min(1.0, max(0.0, 1.0 - (interval * 1.5)))
-        withAnimation(.interactiveSpring(response: 0.5, dampingFraction: 0.6)) {
-            self.intensity = rawIntensity
-        }
+        self.intensity = rawIntensity
         
         // Optimized: Reduced decay duration for better performance
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
-            withAnimation(.easeOut(duration: 0.6)) {
-                self?.intensity = 0.0
-            }
+            self?.intensity = 0.0
         }
     }
 }
@@ -66,69 +68,84 @@ struct SignUpView: View {
     enum Field { case fullName, email, password, confirmPassword }
     
     var body: some View {
-        ZStack {
-            // Layer 0: Living Atmosphere
-            AtmosphericBackground(intensity: context.intensity)
-                .ignoresSafeArea()
-                .onTapGesture { focusedField = nil }
-            
-            // Layer 1: Content Flow
-            VStack(spacing: 0) {
-                // Header Navigation
-                HStack {
-                    Spacer()
-                    
-                    // Step Indicator
-                    HStack(spacing: 4) {
-                        ForEach(0..<3) { step in
-                            Capsule()
-                                .fill(step == currentStep ? Color.cyan : Color.white.opacity(0.2))
-                                .frame(width: step == currentStep ? 24 : 8, height: 4)
-                                .animation(.spring, value: currentStep)
+        GeometryReader { geometry in
+            ZStack {
+                // Layer 0: Living Atmosphere
+                AtmosphericBackground(intensity: context.intensity)
+                    .ignoresSafeArea()
+                
+                // Layer 1: Content Flow in ScrollView
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Header Navigation
+                        HStack {
+                            Spacer()
+                            
+                            // Step Indicator
+                            HStack(spacing: 4) {
+                                ForEach(0..<3) { step in
+                                    Capsule()
+                                        .fill(step == currentStep ? Color.cyan : Color.white.opacity(0.2))
+                                        .frame(width: step == currentStep ? 24 : 8, height: 4)
+                                        .animation(.spring, value: currentStep)
+                                }
+                            }
                         }
+                        .padding(.horizontal, 24)
+                        .padding(.top, 60)
+                        
+                        Spacer()
+                            .frame(height: 40) // Reduced spacer to push content up
+                        
+                        // Main Interactive Area
+                        ZStack {
+                            switch currentStep {
+                            case 0: identityStep
+                            case 1: credentialsStep
+                            case 2: profileStep
+                            default: EmptyView()
+                            }
+                        }
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.9))
+                        ))
+                        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
+                        
+                        Spacer()
+                            .frame(height: 60) // Reduced bottom spacer
+                        
+                        // ✅ FIXED: Bottom Action Area with fixed height
+                        ZStack {
+                            if errorMessage != nil {
+                                Text(errorMessage?.uppercased() ?? "")
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.red)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.8)
+                                    .padding(.bottom, 8)
+                                    .transition(.opacity)
+                            }
+                        }
+                        .frame(height: errorMessage != nil ? 40 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: errorMessage)
+                        
+                        PrimaryActionButton(
+                            title: currentStep == 2 ? "Create Account" : "Next",
+                            isLoading: isSigningUp,
+                            action: handleNextStep
+                        )
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 40)
                     }
+                    .frame(minHeight: geometry.size.height)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, 60)
-                
-                Spacer()
-                    .frame(maxHeight: 40) // Reduced spacer to push content up
-                
-                // Main Interactive Area
-                ZStack {
-                    switch currentStep {
-                    case 0: identityStep
-                    case 1: credentialsStep
-                    case 2: profileStep
-                    default: EmptyView()
-                    }
-                }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity).combined(with: .scale(scale: 0.9))
-                ))
-                .animation(.spring(response: 0.5, dampingFraction: 0.8), value: currentStep)
-                
-                Spacer()
-                    .frame(maxHeight: 60) // Reduced bottom spacer
-                
-                // Bottom Action Area
-                if errorMessage != nil {
-                    Text(errorMessage?.uppercased() ?? "")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.red)
-                        .padding(.bottom, 8)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-                
-                PrimaryActionButton(
-                    title: currentStep == 2 ? "Create Account" : "Next",
-                    isLoading: isSigningUp,
-                    action: handleNextStep
-                )
-                .padding(.horizontal, 24)
-                .padding(.bottom, 40)
+                .scrollDismissesKeyboard(.interactively)
             }
+            .onTapGesture {
+                focusedField = nil
+            }
+            .dismissKeyboardOnTap()
         }
         .preferredColorScheme(.dark) // Enforce cinematic mode
         .onChange(of: selectedPhotoItem) { handlePhotoSelection() }
@@ -137,6 +154,9 @@ struct SignUpView: View {
                 profileImage = croppedImage
                 tempImageForCropping = nil
             }
+        }
+        .onDisappear {
+            focusedField = nil
         }
     }
     
@@ -299,7 +319,7 @@ struct SignUpView: View {
                 
                 if provideDOB {
                     DatePicker("", selection: $dateOfBirth, displayedComponents: .date)
-                        .datePickerStyle(.graphical)
+                        .datePickerStyle(.compact)
                         .colorScheme(.dark)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
@@ -329,6 +349,8 @@ struct SignUpView: View {
                 showError("Credentials required")
             } else if password != confirmPassword {
                 showError("Passwords do not match")
+            } else if password.count < 6 {
+                showError("Password must be at least 6 characters")
             } else {
                 withAnimation { currentStep = 2 }
             }
@@ -362,9 +384,12 @@ struct SignUpView: View {
         
         Task {
             do {
+                // 1. Create Firebase Auth account and Firestore profile
                 try await authService.signUp(fullName: fullName, email: email, password: password)
                 
+                // 2. Update additional profile details locally and sync to Firestore
                 if let newUser = authService.currentUser {
+                    // Save profile image locally (Firebase Storage is not free)
                     if let image = profileImage,
                        let data = image.jpegData(compressionQuality: 0.8) {
                         let filename = "\(newUser.id).jpg"
@@ -373,12 +398,18 @@ struct SignUpView: View {
                         newUser.profileImageFilename = filename
                     }
                     
+                    // Update profile details
                     newUser.roleTitle = selectedRole.title
                     newUser.gender = selectedGender
                     if provideDOB { newUser.dateOfBirth = dateOfBirth }
                     newUser.nativeLanguage = selectedNativeLanguage
                     
+                    // Save locally
                     try? authService.modelContext.save()
+                    
+                    // Sync to Firestore
+                    try await authService.updateUserProfile()
+                    print("✅ Profile details synced to Firestore")
                 }
                 
                 // Success handled by Auth state change

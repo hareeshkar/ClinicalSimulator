@@ -43,6 +43,12 @@ struct DashboardView: View {
     // ✅ NEW: State for rotating recommended cases
     @State private var currentRecommendedCases: [PatientCase] = []
     
+    // UI State for loading
+    @State private var isSyncing = false
+    
+    // Track if we have done the initial load
+    @AppStorage("isDatabaseInitialized") private var isDatabaseInitialized = false
+    
     // Computed Properties
     private var availableCases: [PatientCase] {
         // Always return the set of non-in-progress cases. Filtering by specialty is handled
@@ -135,43 +141,67 @@ struct DashboardView: View {
     // MARK: - Main Body
     var body: some View {
         NavigationStack {
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 48) {
-                    headerView
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.05), value: contentHasAppeared)
-                    
-                    statsSection
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.1), value: contentHasAppeared)
-                    
-                    continueSection
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.15), value: contentHasAppeared)
-                    
-                    quickActionsSection
-                        .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.2), value: contentHasAppeared)
-                    
-                    recommendedSection
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.5), value: contentHasAppeared)
-                    
-                    recentPerformanceSection
-                        .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.6), value: contentHasAppeared)
+            ZStack {
+                if (isSyncing && !isDatabaseInitialized) || (allCases.isEmpty && !isDatabaseInitialized) {
+                    // 1. Initial Launch/Sync Screen
+                    VStack(spacing: 20) {
+                        ProgressView()
+                            .scaleEffect(1.5)
+                            .tint(.blue)
+                        Text("Syncing Medical Cases...")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text("Loading \(allCases.isEmpty ? "case library" : "\(allCases.count) cases")")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color(.systemGroupedBackground))
+                } else {
+                    // 2. The Normal Dashboard
+                    ScrollView {
+                        LazyVStack(alignment: .leading, spacing: 48) {
+                            headerView
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.05), value: contentHasAppeared)
+                            
+                            statsSection
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.1), value: contentHasAppeared)
+                            
+                            continueSection
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.15), value: contentHasAppeared)
+                            
+                            quickActionsSection
+                                .animation(.spring(response: 0.4, dampingFraction: 0.75).delay(0.2), value: contentHasAppeared)
+                            
+                            recommendedSection
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.5), value: contentHasAppeared)
+                            
+                            recentPerformanceSection
+                                .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.6), value: contentHasAppeared)
+                        }
+                        .padding(.top, 40) // Increased top padding to push content further down
+                        .padding(.bottom, 8)
+                        .opacity(contentHasAppeared ? 1 : 0)
+                    }
+                    .background(
+                        LinearGradient(
+                            gradient: Gradient(colors: [
+                                Color(.systemGroupedBackground),
+                                Color(.systemGroupedBackground).opacity(0.8)
+                            ]),
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .navigationBarHidden(true)
+                    .refreshable {
+                        try? await Task.sleep(nanoseconds: 500_000_000)
+                    }
                 }
-                .padding(.top, 40) // Increased top padding to push content further down
-                .padding(.bottom, 8)
-                .opacity(contentHasAppeared ? 1 : 0)
             }
-            .background(
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        Color(.systemGroupedBackground),
-                        Color(.systemGroupedBackground).opacity(0.8)
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
-            .navigationBarHidden(true)
-            .refreshable {
-                try? await Task.sleep(nanoseconds: 500_000_000)
+            .task {
+                // 3. Trigger the sync safely on appear
+                await performBackgroundSync()
             }
         }
         .onAppear(perform: handleOnAppear)
@@ -482,16 +512,80 @@ struct DashboardView: View {
     }
     
     private func handleOnAppear() {
-        if allCases.isEmpty {
-            DataManager.loadSampleData(modelContext: modelContext)
+        // Only trigger content animation if sync is already done
+        if isDatabaseInitialized {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                contentHasAppeared = true
+            }
+            
+            // ✅ NEW: Rotate recommended cases on each appearance (respecting "Recommended"/"All"/specialty)
+            currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
+        }
+    }
+    
+    private func performBackgroundSync() async {
+        // Don't sync if we already have data and are just viewing tab
+        if !allCases.isEmpty && isDatabaseInitialized {
+            dashLogger.log("⏭️ Skipping sync - database already initialized with \(allCases.count, privacy: .public) cases")
+            // Still trigger content animation on subsequent views
+            if !contentHasAppeared {
+                await MainActor.run {
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                        contentHasAppeared = true
+                    }
+                    currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
+                }
+            }
+            return
         }
         
-        withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
-            contentHasAppeared = true
-        }
+        dashLogger.log("🚀 Starting cloud sync from DashboardView")
+        isSyncing = true
         
-        // ✅ NEW: Rotate recommended cases on each appearance (respecting "Recommended"/"All"/specialty)
-        currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
+        // Create the actor - access container through modelContext
+        let syncer = CaseSynchronizationService(modelContainer: modelContext.container)
+        
+        do {
+            // ☁️ NEW: This syncs from Firestore instead of local JSON
+            dashLogger.log("☁️ Calling syncWithCloud() on background actor...")
+            try await syncer.syncWithCloud()
+            
+            await MainActor.run {
+                dashLogger.log("✅ Cloud sync completed successfully")
+                isDatabaseInitialized = true
+                isSyncing = false
+                
+                // Trigger content animation after successful sync
+                withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                    contentHasAppeared = true
+                }
+                currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
+            }
+        } catch {
+            dashLogger.error("❌ Cloud Sync Failed: \(error.localizedDescription, privacy: .public)")
+            dashLogger.log("⚠️ Falling back to local sync...")
+            
+            // Fallback to local sync if cloud fails
+            do {
+                try await syncer.syncLocalData()
+                await MainActor.run {
+                    dashLogger.log("✅ Local sync completed successfully (fallback)")
+                    isDatabaseInitialized = true
+                    isSyncing = false
+                    
+                    withAnimation(.spring(response: 0.6, dampingFraction: 0.8)) {
+                        contentHasAppeared = true
+                    }
+                    currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
+                }
+            } catch {
+                dashLogger.error("❌ Local Sync Also Failed: \(error.localizedDescription, privacy: .public)")
+                await MainActor.run {
+                    isSyncing = false
+                    isDatabaseInitialized = true // Mark as initialized to prevent infinite retry
+                }
+            }
+        }
     }
 }
 

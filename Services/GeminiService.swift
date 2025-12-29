@@ -125,7 +125,7 @@ final class GeminiService {
         )
         // Create and return the streaming wrapper.
         return AsyncThrowingStream { continuation in
-            Task {
+            Task { @Sendable in
                 do {
                     // Use the single shared model for all AI work (streaming patient output).
                     let contentStream = try model.generateContentStream(prompt)

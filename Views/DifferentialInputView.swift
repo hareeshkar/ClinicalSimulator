@@ -95,6 +95,7 @@ struct DifferentialInputView: View {
                 }
             }
             .onAppear(perform: initializeData)
+            .dismissKeyboardOnTap()
         }
     }
     

@@ -26,20 +26,20 @@ class InteractionContext: ObservableObject {
         let avgInterval = inputIntervals.reduce(0, +) / Double(inputIntervals.count)
         let rawIntensity = min(1.0, max(0.0, 1.0 - (avgInterval * 2.0)))
         
-        // Smoothly interpolate intensity
-        withAnimation(.interactiveSpring(response: 0.6, dampingFraction: 0.7)) {
-            self.intensity = rawIntensity
-            self.hesitationDetected = false
-        }
+        // ✅ FIX: Reduce animation frequency - only update every 300ms
+        let timeSinceLastUpdate = now.timeIntervalSince(lastInputTime)
+        guard timeSinceLastUpdate > 0.3 else { return }
+        
+        // Smoothly interpolate intensity - reduced animation complexity
+        self.intensity = rawIntensity
+        self.hesitationDetected = false
         
         // Reset hesitation timer
         typingTimer?.invalidate()
         typingTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { [weak self] _ in
             Task { @MainActor [weak self] in
-                withAnimation(.easeInOut(duration: 1.0)) {
-                    self?.intensity = 0.0
-                    self?.hesitationDetected = true
-                }
+                self?.intensity = 0.0
+                self?.hesitationDetected = true
             }
         }
     }
@@ -67,164 +67,182 @@ struct LoginView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack {
-                // Layer 0: Intelligent Ambient World
-                CinematicBackground(intensity: context.intensity)
-                    .ignoresSafeArea()
-                
-                // Layer 1: Content
-                VStack(spacing: 0) {
-                    Spacer()
+            GeometryReader { geometry in
+                ZStack {
+                    // Layer 0: Intelligent Ambient World
+                    CinematicBackground(intensity: context.intensity)
+                        .ignoresSafeArea()
                     
-                    // Editorial Header
-                    VStack(alignment: .leading, spacing: -5) {
-                        Text("Clinical")
-                            .font(.system(size: 14, weight: .bold, design: .monospaced))
-                            .tracking(8)
-                            .opacity(0.6)
-                            .offset(x: appearSequence ? 0 : -20)
-                            .opacity(appearSequence ? 1 : 0)
-                        
-                        Text("Simulator")
-                            .font(.system(size: 42, weight: .black, design: .default))
-                            .tracking(-1)
-                            .foregroundStyle(.white)
-                            .mask(
-                                LinearGradient(
-                                    colors: [.white, .white.opacity(0.7)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .scaleEffect(appearSequence ? 1 : 0.9)
-                            .opacity(appearSequence ? 1 : 0)
-                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: appearSequence)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 32)
-                    .padding(.bottom, 40)
-                    
-                    // Intelligent Form Cluster
-                    VStack(spacing: 24) {
-                        
-                        // Email Input
-                        LiquidTextField(
-                            title: "Email",
-                            text: $email,
-                            icon: "plus.viewfinder",
-                            isSecure: false,
-                            context: context,
-                            isFocused: focusedField == .email
-                        )
-                        .focused($focusedField, equals: .email)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .password }
-                        
-                        // Password Input
-                        LiquidTextField(
-                            title: "Password",
-                            text: $password,
-                            icon: "lock.square.stack.fill",
-                            isSecure: true,
-                            context: context,
-                            isFocused: focusedField == .password
-                        )
-                        .focused($focusedField, equals: .password)
-                        .submitLabel(.go)
-                        .onSubmit(performLogin)
-                        
-                        HStack {
-    // Remember Me
-    Button(action: {
-        rememberMe.toggle()
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }) {
-        HStack(spacing: 8) {
-            Image(systemName: rememberMe ? "checkmark.square.fill" : "square")
-                .foregroundColor(rememberMe ? .cyan : .white.opacity(0.6))
-                .font(.system(size: 16))
-
-            Text("Remember Me")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.8))
-        }
-    }
-
-    Spacer()
-
-    // Forgot Password
-    Button(action: {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        isShowingForgotPassword = true
-    }) {
-        Text("Forgot Password?")
-            .font(.system(size: 10, weight: .bold, design: .monospaced))
-            .foregroundStyle(.cyan)
-    }
-}
-.padding(.horizontal, 4)
-.padding(.top, 8)
-
-                        
-                        // Error State (Editorial Style)
-                        if let error = errorMessage {
-                            HStack(spacing: 12) {
-                                Rectangle()
-                                    .fill(Color.red)
-                                    .frame(width: 2)
-                                Text(error.uppercased())
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.red)
+                    // Layer 1: Content in ScrollView for keyboard handling
+                    ScrollView {
+                        VStack(spacing: 0) {
+                            Spacer()
+                                .frame(height: geometry.size.height * 0.15)
+                            
+                            // Editorial Header
+                            VStack(alignment: .leading, spacing: -5) {
+                                Text("Clinical")
+                                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                                    .tracking(8)
+                                    .opacity(0.6)
+                                    .offset(x: appearSequence ? 0 : -20)
+                                    .opacity(appearSequence ? 1 : 0)
+                                
+                                Text("Simulator")
+                                    .font(.system(size: 42, weight: .black, design: .default))
+                                    .tracking(-1)
+                                    .foregroundStyle(.white)
+                                    .mask(
+                                        LinearGradient(
+                                            colors: [.white, .white.opacity(0.7)],
+                                            startPoint: .topLeading,
+                                            endPoint: .bottomTrailing
+                                        )
+                                    )
+                                    .scaleEffect(appearSequence ? 1 : 0.9)
+                                    .opacity(appearSequence ? 1 : 0)
+                                    .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.1), value: appearSequence)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, 4)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                        
-                        // Action Button
-                        MagneticButton(
-                            title: "Sign In",
-                            isLoading: isLoggingIn,
-                            intensity: context.intensity,
-                            action: performLogin
-                        )
-                        .padding(.top, 16)
-                        
-                        // Footer Link
-                        HStack {
-                            Text("Don't have an account?")
-                                .font(.system(size: 10, weight: .medium, design: .monospaced))
-                                .foregroundStyle(.white.opacity(0.4))
+                            .padding(.horizontal, 32)
+                            .padding(.bottom, 40)
                             
-                            NavigationLink {
-                                SignUpView()
-                            } label: {
-                                Text("Sign Up")
-                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.white)
-                                    .underline()
-                            }
-                        }
-                        .padding(.top, 24)
-                    }
-                    .padding(.horizontal, 24)
-                    .offset(y: appearSequence ? 0 : 50)
-                    .opacity(appearSequence ? 1 : 0)
-                    .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.2), value: appearSequence)
-                    
-                    Spacer()
+                            // Intelligent Form Cluster
+                            VStack(spacing: 24) {
+                                
+                                // Email Input
+                                LiquidTextField(
+                                    title: "Email",
+                                    text: $email,
+                                    icon: "plus.viewfinder",
+                                    isSecure: false,
+                                    context: context,
+                                    isFocused: focusedField == .email
+                                )
+                                .focused($focusedField, equals: .email)
+                                .submitLabel(.next)
+                                .onSubmit { focusedField = .password }
+                                
+                                // Password Input
+                                LiquidTextField(
+                                    title: "Password",
+                                    text: $password,
+                                    icon: "lock.square.stack.fill",
+                                    isSecure: true,
+                                    context: context,
+                                    isFocused: focusedField == .password
+                                )
+                                .focused($focusedField, equals: .password)
+                                .submitLabel(.go)
+                                .onSubmit(performLogin)
+                                
+                                HStack {
+            // Remember Me
+            Button(action: {
+                rememberMe.toggle()
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: rememberMe ? "checkmark.square.fill" : "square")
+                        .foregroundColor(rememberMe ? .cyan : .white.opacity(0.6))
+                        .font(.system(size: 16))
+
+                    Text("Remember Me")
+                        .font(.system(size: 12, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.8))
                 }
             }
-            .onAppear {
-                // Sequence the entrance
-                withAnimation { appearSequence = true }
+
+            Spacer()
+
+            // Forgot Password
+            Button(action: {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                isShowingForgotPassword = true
+            }) {
+                Text("Forgot Password?")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.cyan)
             }
-            // Tap background to dismiss keyboard
-            .onTapGesture {
-                focusedField = nil
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 8)
+
+                                
+                                // ✅ FIXED: Error State with fixed height to prevent layout shift
+                                ZStack {
+                                    if let error = errorMessage {
+                                        HStack(spacing: 12) {
+                                            Rectangle()
+                                                .fill(Color.red)
+                                                .frame(width: 2)
+                                            Text(error.uppercased())
+                                                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                                .foregroundStyle(.red)
+                                                .lineLimit(2)
+                                                .minimumScaleFactor(0.8)
+                                        }
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.leading, 4)
+                                        .transition(.opacity)
+                                    }
+                                }
+                                .frame(height: errorMessage != nil ? 30 : 0)
+                                .animation(.easeInOut(duration: 0.2), value: errorMessage)
+                                
+                                // Action Button
+                                MagneticButton(
+                                    title: "Sign In",
+                                    isLoading: isLoggingIn,
+                                    intensity: context.intensity,
+                                    action: performLogin
+                                )
+                                .padding(.top, 16)
+                                
+                                // Footer Link
+                                HStack {
+                                    Text("Don't have an account?")
+                                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(.white.opacity(0.4))
+                                    
+                                    NavigationLink {
+                                        SignUpView()
+                                    } label: {
+                                        Text("Sign Up")
+                                            .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                            .underline()
+                                    }
+                                }
+                                .padding(.top, 24)
+                            }
+                            .padding(.horizontal, 24)
+                            .offset(y: appearSequence ? 0 : 50)
+                            .opacity(appearSequence ? 1 : 0)
+                            .animation(.spring(response: 0.5, dampingFraction: 0.7).delay(0.2), value: appearSequence)
+                            
+                            Spacer()
+                                .frame(height: 40)
+                        }
+                        .frame(minHeight: geometry.size.height)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                }
+                .onAppear {
+                    // Sequence the entrance
+                    withAnimation { appearSequence = true }
+                }
+                // Tap background to dismiss keyboard
+                .onTapGesture {
+                    focusedField = nil
+                }
             }
             .sheet(isPresented: $isShowingForgotPassword) {
                 ForgotPasswordView()
+            }
+            .dismissKeyboardOnTap()
+            .onDisappear {
+                focusedField = nil
             }
         }
     }
@@ -266,7 +284,7 @@ struct CinematicBackground: View {
     var intensity: Double // Not used, kept for compatibility
     
     var body: some View {
-        // Optimized: Static gradient background with mesh gradient effect
+        // ✅ RESTORED: Beautiful gradient background with performance optimization
         ZStack {
             // Base color
             Color(red: 0.02, green: 0.03, blue: 0.07)

@@ -167,6 +167,7 @@
 This release introduces a comprehensive redesign and architectural improvements:
 
 **UI/UX Improvements**:
+
 - Migrated to "Clinical Journal" aesthetic with editorial serif typography
 - Unified `ClinicalMonitorWidget` component across briefing and simulation views
 - Implemented custom liquid-physics score indicator for performance visualization
@@ -174,6 +175,7 @@ This release introduces a comprehensive redesign and architectural improvements:
 - Enhanced haptic feedback with biometric pulse and clinical alert patterns
 
 **Logic & Data Enhancements**:
+
 - Implemented robust multi-state evaluation engine with error classification
 - Added atomic upsert synchronization for large case library updates
 - Improved API resilience with intelligent error recovery paths
@@ -240,7 +242,7 @@ This release introduces a comprehensive redesign and architectural improvements:
 - **`ChatViewModel`**: Manages conversation flow, AI streaming, and preceptor hints
 - **`SimulationViewModel`**: Controls patient state transitions, vital signs, and physics engine
 - **`DiagnosticsViewModel`**: Handles test ordering and result revelation
-- **`EvaluationViewModel`**: 
+- **`EvaluationViewModel`**:
   - Multi-state evaluation management (idle, evaluating, success, error)
   - Graceful error handling with user-facing recovery options
   - Persistence of evaluation results for offline access

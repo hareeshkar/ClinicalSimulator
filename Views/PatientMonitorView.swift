@@ -422,6 +422,7 @@ struct ECGStripView: View {
                     lineWidth: 2
                 )
             }
+            .drawingGroup() // GPU optimization for complex calculations
         }
         .background(
             // Grid Lines (Subtle)

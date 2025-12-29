@@ -48,6 +48,10 @@ class User {
     @Attribute(.unique)
     var id: UUID = UUID()
     
+    // ✅ Firebase UID - links this local profile to Firebase Auth account
+    @Attribute(.unique)
+    var firebaseUID: String?
+    
     // ✅ NEW: Email is now the unique login identifier.
     @Attribute(.unique)
     var email: String

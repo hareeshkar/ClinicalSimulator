@@ -117,6 +117,7 @@ struct DiagnosticsTabView: View {
         }
         .navigationTitle("Orders & Results")
         .navigationBarTitleDisplayMode(.large)
+        .dismissKeyboardOnTap()
     }
 }
 

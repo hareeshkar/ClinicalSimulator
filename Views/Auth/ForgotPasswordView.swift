@@ -2,22 +2,20 @@ import SwiftUI
 import CoreHaptics
 import SwiftData
 
-// MARK: - 🔐 FORGOT PASSWORD VIEW
+// MARK: - 🔐 FORGOT PASSWORD VIEW (Firebase Email Reset)
 struct ForgotPasswordView: View {
     @EnvironmentObject var authService: AuthService
     @Environment(\.dismiss) var dismiss
     @StateObject private var context = SignUpInteractionContext()
     
-    // Logic State
-    @State private var currentStep = 0 // 0: Identify, 1: Reset, 2: Success
+    // Logic State - Simplified for Firebase email reset flow
+    @State private var currentStep = 0 // 0: Enter Email, 1: Success (email sent)
     @State private var email = ""
-    @State private var newPassword = ""
-    @State private var confirmPassword = ""
     @State private var isLoading = false
     @State private var errorMessage: String?
     
     @FocusState private var focusedField: Field?
-    enum Field { case email, newPassword, confirmPassword }
+    enum Field { case email }
     
     var body: some View {
         ZStack {
@@ -30,19 +28,15 @@ struct ForgotPasswordView: View {
             VStack(spacing: 0) {
                 // Header
                 HStack {
-                    Spacer()
-                    
-                    // Step Indicator (only show for steps 0 and 1)
-                    if currentStep < 2 {
-                        HStack(spacing: 4) {
-                            ForEach(0..<2) { step in
-                                Capsule()
-                                    .fill(step == currentStep ? Color.cyan : Color.white.opacity(0.2))
-                                    .frame(width: step == currentStep ? 24 : 8, height: 4)
-                                    .animation(.spring, value: currentStep)
-                            }
-                        }
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.6))
+                            .padding(12)
+                            .background(Circle().fill(.ultraThinMaterial))
                     }
+                    
+                    Spacer()
                 }
                 .padding(.horizontal, 24)
                 .padding(.top, 60)
@@ -52,9 +46,8 @@ struct ForgotPasswordView: View {
                 // Main Interactive Area
                 ZStack {
                     switch currentStep {
-                    case 0: identityStep
-                    case 1: resetStep
-                    case 2: successStep
+                    case 0: emailStep
+                    case 1: successStep
                     default: EmptyView()
                     }
                 }
@@ -67,7 +60,7 @@ struct ForgotPasswordView: View {
                 Spacer()
                 
                 // Error & Action Area
-                if currentStep < 2 {
+                if currentStep == 0 {
                     if let error = errorMessage {
                         Text(error.uppercased())
                             .font(.system(size: 10, weight: .bold, design: .monospaced))
@@ -77,9 +70,9 @@ struct ForgotPasswordView: View {
                     }
                     
                     PrimaryActionButton(
-                        title: currentStep == 0 ? "Verify Email" : "Reset Password",
+                        title: "Send Reset Link",
                         isLoading: isLoading,
-                        action: handleAction
+                        action: sendPasswordResetEmail
                     )
                     .padding(.horizontal, 24)
                     .padding(.bottom, 40)
@@ -89,8 +82,8 @@ struct ForgotPasswordView: View {
         .preferredColorScheme(.dark)
     }
     
-    // MARK: - 🕵️ STEP 1: IDENTIFICATION
-    var identityStep: some View {
+    // MARK: - 📧 STEP 1: ENTER EMAIL
+    var emailStep: some View {
         VStack(alignment: .leading, spacing: 32) {
             Text("Forgot Password?")
                 .font(.system(size: 48, weight: .black, design: .default))
@@ -98,7 +91,7 @@ struct ForgotPasswordView: View {
                 .foregroundStyle(.white)
                 .mask(LinearGradient(colors: [.white, .white.opacity(0.5)], startPoint: .top, endPoint: .bottom))
             
-            Text("Enter your email address to reset your password.")
+            Text("Enter your email address and we'll send you a link to reset your password.")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
                 .fixedSize(horizontal: false, vertical: true)
@@ -111,51 +104,12 @@ struct ForgotPasswordView: View {
                 context: context
             )
             .focused($focusedField, equals: .email)
-            .onSubmit { handleAction() }
+            .onSubmit { sendPasswordResetEmail() }
         }
         .padding(.horizontal, 32)
     }
     
-    // MARK: - 🔐 STEP 2: RESET
-    var resetStep: some View {
-        VStack(alignment: .leading, spacing: 32) {
-            Text("Set New Password")
-                .font(.system(size: 48, weight: .black, design: .default))
-                .tracking(-1)
-                .foregroundStyle(.white)
-                .mask(LinearGradient(colors: [.white, .white.opacity(0.5)], startPoint: .top, endPoint: .bottom))
-            
-            Text("Create a new password for \(email).")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.white.opacity(0.6))
-                .padding(.bottom, 8)
-            
-            VStack(spacing: 24) {
-                FloatingInput(
-                    title: "New Password",
-                    text: $newPassword,
-                    icon: "lock.fill",
-                    isSecure: true,
-                    context: context
-                )
-                .focused($focusedField, equals: .newPassword)
-                .onSubmit { focusedField = .confirmPassword }
-                
-                FloatingInput(
-                    title: "Confirm Password",
-                    text: $confirmPassword,
-                    icon: "lock.shield.fill",
-                    isSecure: true,
-                    context: context
-                )
-                .focused($focusedField, equals: .confirmPassword)
-                .onSubmit { handleAction() }
-            }
-        }
-        .padding(.horizontal, 32)
-    }
-    
-    // MARK: - ✅ STEP 3: SUCCESS
+    // MARK: - ✅ STEP 2: SUCCESS (Email Sent)
     var successStep: some View {
         VStack(spacing: 32) {
             ZStack {
@@ -168,46 +122,48 @@ struct ForgotPasswordView: View {
                     .stroke(Color.green.opacity(0.3), lineWidth: 2)
                     .frame(width: 100, height: 100)
                 
-                Image(systemName: "checkmark")
+                Image(systemName: "envelope.badge.shield.half.filled")
                     .font(.system(size: 40, weight: .bold))
                     .foregroundStyle(.green)
             }
             
             VStack(spacing: 12) {
-                Text("Password Reset")
+                Text("Check Your Email")
                     .font(.system(size: 32, weight: .black, design: .default))
                     .tracking(-1)
                     .foregroundStyle(.white)
                 
-                Text("Your password has been successfully updated.\nReturning to login...")
+                Text("We've sent a password reset link to\n\(email)\n\nCheck your inbox and follow the link to reset your password.")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(.white.opacity(0.6))
                     .multilineTextAlignment(.center)
             }
+            
+            Button(action: { dismiss() }) {
+                Text("Back to Login")
+                    .font(.system(size: 14, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.cyan)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 32)
+                    .background(
+                        Capsule()
+                            .stroke(Color.cyan.opacity(0.5), lineWidth: 1)
+                    )
+            }
+            .padding(.top, 16)
         }
         .padding(.horizontal, 32)
         .onAppear {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-                dismiss()
-            }
         }
     }
     
     // MARK: - 🧠 LOGIC
     
-    private func handleAction() {
+    private func sendPasswordResetEmail() {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
         focusedField = nil
         
-        if currentStep == 0 {
-            performIdentityCheck()
-        } else if currentStep == 1 {
-            performPasswordReset()
-        }
-    }
-    
-    private func performIdentityCheck() {
         guard !email.isEmpty else {
             showError("Email required")
             return
@@ -218,51 +174,16 @@ struct ForgotPasswordView: View {
         
         Task {
             do {
-                let exists = try await authService.verifyEmailExists(email)
+                try await authService.sendPasswordResetEmail(to: email)
                 
                 await MainActor.run {
                     isLoading = false
-                    if exists {
-                        withAnimation { currentStep = 1 }
-                    } else {
-                        showError("No account found with this email")
-                    }
+                    withAnimation { currentStep = 1 }
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
                     showError(error.localizedDescription)
-                }
-            }
-        }
-    }
-    
-    private func performPasswordReset() {
-        guard !newPassword.isEmpty, !confirmPassword.isEmpty else {
-            showError("Both password fields required")
-            return
-        }
-        
-        guard newPassword == confirmPassword else {
-            showError("Passwords do not match")
-            return
-        }
-        
-        isLoading = true
-        errorMessage = nil
-        
-        Task {
-            do {
-                try await authService.resetPassword(email: email, newPassword: newPassword)
-                
-                await MainActor.run {
-                    isLoading = false
-                    withAnimation { currentStep = 2 }
-                }
-            } catch {
-                await MainActor.run {
-                    isLoading = false
-                    showError("Failed to reset password")
                 }
             }
         }

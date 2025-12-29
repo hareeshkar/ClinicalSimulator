@@ -37,8 +37,11 @@ struct ProfileView: View {
     
     // Alerts
     @State private var activeAlert: ProfileAlert?
+    @State private var isUploadingToFirestore = false
+    @State private var uploadMessage: String?
+    
     enum ProfileAlert: Identifiable {
-        case reset, reload, logout
+        case reset, reload, logout, uploadToCloud, clearCloud
         var id: Int { hashValue }
     }
     
@@ -62,9 +65,41 @@ struct ProfileView: View {
             .toolbar { toolbarContent }
             .alert(item: $activeAlert) { alertType in
                 switch alertType {
-                case .reset: return Alert(title: Text("Reset Progress?"), message: Text("This will clear all your simulation data."), primaryButton: .destructive(Text("Reset"), action: resetAllProgress), secondaryButton: .cancel())
-                case .reload: return Alert(title: Text("Reload Cases?"), message: Text("This will refresh the case library."), primaryButton: .default(Text("Reload"), action: reloadSampleCases), secondaryButton: .cancel())
-                case .logout: return Alert(title: Text("Sign Out?"), message: Text("You will need to log in again."), primaryButton: .destructive(Text("Sign Out"), action: performLogout), secondaryButton: .cancel())
+                case .reset:
+                    return Alert(
+                        title: Text("Reset Progress?"),
+                        message: Text("This will clear all your simulation data."),
+                        primaryButton: .destructive(Text("Reset"), action: resetAllProgress),
+                        secondaryButton: .cancel()
+                    )
+                case .reload:
+                    return Alert(
+                        title: Text("Reload Cases?"),
+                        message: Text("This will refresh the case library."),
+                        primaryButton: .default(Text("Reload"), action: reloadSampleCases),
+                        secondaryButton: .cancel()
+                    )
+                case .logout:
+                    return Alert(
+                        title: Text("Sign Out?"),
+                        message: Text("You will need to log in again."),
+                        primaryButton: .destructive(Text("Sign Out"), action: performLogout),
+                        secondaryButton: .cancel()
+                    )
+                case .uploadToCloud:
+                    return Alert(
+                        title: Text("☁️ Upload to Firestore?"),
+                        message: Text("This will upload all cases from SampleCases.json to your Firestore database. Run this ONCE for initial setup."),
+                        primaryButton: .default(Text("Upload"), action: uploadToFirestore),
+                        secondaryButton: .cancel()
+                    )
+                case .clearCloud:
+                    return Alert(
+                        title: Text("⚠️ Clear Firestore?"),
+                        message: Text("This will DELETE ALL cases from Firestore. This action cannot be undone."),
+                        primaryButton: .destructive(Text("Clear"), action: clearFirestoreDatabase),
+                        secondaryButton: .cancel()
+                    )
                 }
             }
             .onChange(of: selectedPhotoItem, handlePhotoSelection)
@@ -73,6 +108,7 @@ struct ProfileView: View {
             }
             .onChange(of: selectedImage, saveProfileImage)
             .onAppear(perform: setupView)
+            .dismissKeyboardOnTap()
         }
     }
     
@@ -142,6 +178,33 @@ struct ProfileView: View {
                 }
             }
             
+            // ⚠️ ADMIN TOOLS - Remove after initial setup
+            #if DEBUG
+            GlassSection(title: "🔧 Admin Tools", tint: .orange) {
+                VStack(spacing: 12) {
+                    if isUploadingToFirestore {
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .tint(.orange)
+                            Text(uploadMessage ?? "Uploading to Firestore...")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.orange)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 8)
+                    } else {
+                        ActionRow(title: "☁️ Upload Cases to Firestore", icon: "icloud.and.arrow.up", color: .orange) {
+                            activeAlert = .uploadToCloud
+                        }
+                        Divider().overlay(Color.white.opacity(0.1))
+                        ActionRow(title: "🗑️ Clear Firestore Database", icon: "xmark.icloud", color: .red) {
+                            activeAlert = .clearCloud
+                        }
+                    }
+                }
+            }
+            #endif
+            
             // 5. TERMINATION
             Button(action: { activeAlert = .logout }) {
                 HStack(spacing: 10) {
@@ -209,12 +272,23 @@ struct ProfileView: View {
     }
     
     private func saveChanges() {
+        // Update local user model
         currentUser.fullName = editName
         // userRoleTitle is auto-saved via AppStorage
         currentUser.gender = editGender
         currentUser.dateOfBirth = hasDOB ? editDOB : nil
         currentUser.nativeLanguage = editLanguage
         try? modelContext.save()
+        
+        // Sync to Firestore
+        Task {
+            do {
+                try await authService.updateUserProfile()
+                print("✅ Profile changes synced to Firestore")
+            } catch {
+                print("❌ Failed to sync profile to Firestore: \(error.localizedDescription)")
+            }
+        }
     }
     
     // ... (Image handling logic same as before, preserved for brevity)
@@ -292,6 +366,81 @@ struct ProfileView: View {
             print("✅ Sample cases reloaded with smart upsert")
         } catch {
             print("❌ Error reloading cases: \(error.localizedDescription)")
+        }
+    }
+    
+    // MARK: - 🔧 Admin Functions (Firestore Upload)
+    
+    private func uploadToFirestore() {
+        guard !isUploadingToFirestore else { return }
+        
+        isUploadingToFirestore = true
+        uploadMessage = "Preparing upload..."
+        
+        Task {
+            do {
+                let uploader = FirestoreAdminUploader()
+                uploadMessage = "Uploading cases to Firestore..."
+                
+                let (success, failed) = try await uploader.uploadDatabaseToCloud()
+                
+                await MainActor.run {
+                    uploadMessage = "✅ Upload Complete: \(success) cases uploaded"
+                    if failed > 0 {
+                        uploadMessage! += ", \(failed) failed"
+                    }
+                    
+                    // Reset after 3 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        isUploadingToFirestore = false
+                        uploadMessage = nil
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    uploadMessage = "❌ Upload Failed: \(error.localizedDescription)"
+                    
+                    // Reset after 3 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        isUploadingToFirestore = false
+                        uploadMessage = nil
+                    }
+                }
+            }
+        }
+    }
+    
+    private func clearFirestoreDatabase() {
+        guard !isUploadingToFirestore else { return }
+        
+        isUploadingToFirestore = true
+        uploadMessage = "Clearing Firestore database..."
+        
+        Task {
+            do {
+                let uploader = FirestoreAdminUploader()
+                let deletedCount = try await uploader.clearFirestoreDatabase()
+                
+                await MainActor.run {
+                    uploadMessage = "✅ Cleared \(deletedCount) cases from Firestore"
+                    
+                    // Reset after 3 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        isUploadingToFirestore = false
+                        uploadMessage = nil
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    uploadMessage = "❌ Clear Failed: \(error.localizedDescription)"
+                    
+                    // Reset after 3 seconds
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                        isUploadingToFirestore = false
+                        uploadMessage = nil
+                    }
+                }
+            }
         }
     }
     

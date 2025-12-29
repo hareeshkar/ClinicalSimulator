@@ -100,6 +100,7 @@ struct ConversationTabView: View {
                 )
             }
         }
+        .dismissKeyboardOnTap()
         // Hint Overlay Sheet
         .sheet(isPresented: $showHintSheet) {
             ConsultationSheet(
@@ -241,7 +242,8 @@ struct ClinicalMessageRow: View {
             
             // 3. Student Avatar (Right side only)
             if isStudent {
-                AnimatedAvatarView(isBirthday: false, size: 40)
+                // Cached avatar view for performance
+                CachedStudentAvatar(size: 40)
             } else if isPatient || isAttending {
                 Spacer(minLength: 40)
             }
@@ -550,5 +552,29 @@ struct SpeechBubbleShape: Shape {
             cornerRadii: CGSize(width: 20, height: 20)
         )
         return Path(path.cgPath)
+    }
+}
+
+// MARK: - 🎭 CACHED STUDENT AVATAR
+/// Performance-optimized avatar that doesn't re-render for every message.
+///
+/// Why this is Equatable:
+/// - `AnimatedAvatarView` uses a `TimelineView` which schedules updates.
+/// - When used inside a `ForEach` chat list, creating a Timeline for every
+///   message would spawn many update events and cause high CPU and battery use.
+/// - By wrapping it in `CachedStudentAvatar: Equatable` and only comparing
+///   `size`, SwiftUI avoids re-evaluating the avatar body for unchanged rows
+///   (no new Timeline creation), dramatically reducing churn and improving
+///   scroll performance and battery life.
+struct CachedStudentAvatar: View, Equatable {
+    let size: CGFloat
+
+    // Only re-render if the size changes
+    static func == (lhs: CachedStudentAvatar, rhs: CachedStudentAvatar) -> Bool {
+        lhs.size == rhs.size
+    }
+
+    var body: some View {
+        AnimatedAvatarView(isBirthday: false, size: size)
     }
 }

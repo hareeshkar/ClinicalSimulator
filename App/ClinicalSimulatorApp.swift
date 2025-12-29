@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
 import FirebaseCore
+import FirebaseAuth
+import FirebaseFirestore
 
 // ✅ ADD A CUSTOM APP DELEGATE
 class AppDelegate: NSObject, UIApplicationDelegate {
@@ -14,17 +16,20 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             fatalError("Failed to initialize ModelContainer: \(error)")
         }
     }
+    
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        FirebaseApp.configure()
+        return true
+    }
 }
 
 @main
 struct ClinicalSimulatorApp: App {
     // ✅ REGISTER THE APP DELEGATE
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    init() {
-        FirebaseApp.configure()
-        print("Firebase configured successfully!")
-    }
 
     var body: some Scene {
         WindowGroup {

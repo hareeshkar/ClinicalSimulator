@@ -10,7 +10,10 @@ struct AnimatedAvatarView: View {
     private var badgeOffset: CGFloat { size * 0.35 }
     
     var body: some View {
-        TimelineView(.animation) { context in
+        // Throttle avatar updates to 30Hz to significantly reduce CPU & battery usage
+        // while keeping motion smooth for the human eye. This prevents many
+        // TimelineView updates per second when many avatars are present.
+        TimelineView(.periodic(from: .now, by: 1.0/30.0)) { context in
             let time = context.date.timeIntervalSinceReferenceDate
             
             ZStack {

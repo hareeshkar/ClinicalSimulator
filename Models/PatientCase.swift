@@ -14,7 +14,16 @@ class PatientCase: Identifiable, Hashable { // ✅ ADD HASHABLE
     var specialty: String
     var difficulty: String
     var chiefComplaint: String // ✅ NEW: The student-facing title.
+    
+    // ✅ THE MAGIC FIX: @Attribute(.externalStorage)
+    // This tells SwiftData: "Save this huge string to a separate file on disk. 
+    // Do not load it into RAM when I fetch the list of cases. 
+    // Only load it when I specifically access 'patientCase.fullCaseJSON'."
+    @Attribute(.externalStorage) 
     var fullCaseJSON: String
+    
+    // Versioning for future sync checks
+    var dataVersion: Int = 1
     
     // ✅ NEW: Recommended training levels for this case
     var recommendedForLevels: [String] = [] // e.g., ["MS3", "MS4", "Resident"]

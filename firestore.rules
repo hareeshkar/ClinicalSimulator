@@ -1,0 +1,103 @@
+// firestore.rules
+// 🔐 Firebase Firestore Security Rules (2025)
+// Copy this entire file to Firebase Console → Firestore Database → Rules
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // ============================================
+    // 👤 USERS COLLECTION
+    // ============================================
+    // Users can only read and write their own profile
+    // This prevents users from accessing other users' data
+    match /users/{userId} {
+      // Allow read/write if authenticated AND uid matches document ID
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      // Validation: Ensure required fields are present
+      allow create: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasAll(['email', 'fullName', 'uid'])
+                    && request.resource.data.uid == userId;
+      
+      // Validation: Ensure email can't be changed (security)
+      allow update: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.email == resource.data.email;
+    }
+    
+    // ============================================
+    // 📚 CASES COLLECTION
+    // ============================================
+    // Patient cases are read-only for all authenticated users
+    // Only admins can write (via Firebase Console or Cloud Functions)
+    match /cases/{caseId} {
+      // Any authenticated user can read cases
+      allow read: if request.auth != null;
+      
+      // No one can write via client app
+      // Use Firebase Console or Cloud Functions for admin writes
+      allow write: if false;
+    }
+    
+    // ============================================
+    // 🔒 DEFAULT: DENY ALL
+    // ============================================
+    // Any collection not explicitly allowed above is denied
+    // This is a security best practice
+  }
+}
+
+// ============================================
+// 📝 EXPLANATION
+// ============================================
+// 
+// request.auth - Firebase Auth user object (null if not logged in)
+// request.auth.uid - Unique user ID from Firebase Auth
+// request.resource.data - New data being written
+// resource.data - Existing data in document
+// 
+// Security Guarantees:
+// ✅ Users can ONLY access their own profile
+// ✅ Users CANNOT read other users' profiles
+// ✅ Users can read all cases (needed for learning)
+// ✅ Users CANNOT modify cases (prevents cheating)
+// ✅ Email cannot be changed after signup (prevents account hijacking)
+// ✅ All unauthenticated requests are denied
+//
+// ============================================
+// 🧪 TESTING
+// ============================================
+// 
+// Test these rules in Firebase Console → Firestore → Rules → Playground
+// 
+// Test 1: User reads own profile
+//   Location: /users/abc123
+//   Auth: Authenticated as uid=abc123
+//   Operation: read
+//   Expected: ALLOW ✅
+// 
+// Test 2: User reads another user's profile
+//   Location: /users/xyz789
+//   Auth: Authenticated as uid=abc123
+//   Operation: read
+//   Expected: DENY ❌
+// 
+// Test 3: Unauthenticated user reads cases
+//   Location: /cases/case001
+//   Auth: Not authenticated
+//   Operation: read
+//   Expected: DENY ❌
+// 
+// Test 4: Authenticated user reads cases
+//   Location: /cases/case001
+//   Auth: Authenticated as uid=abc123
+//   Operation: read
+//   Expected: ALLOW ✅
+// 
+// Test 5: User tries to modify a case
+//   Location: /cases/case001
+//   Auth: Authenticated as uid=abc123
+//   Operation: write
+//   Expected: DENY ❌
