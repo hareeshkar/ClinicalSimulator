@@ -31,7 +31,13 @@ class EvaluationViewModel: ObservableObject, Hashable {
     private let modelContext: ModelContext
     private let geminiService = GeminiService()
     private let userRole: String
-
+    
+    // ✅ ADD: Progress sync service for cloud synchronization
+    private let progressService: UserProgressService
+    
+    // ✅ NOTIFICATION: Observer for cloud updates
+    private var notificationObserver: NSObjectProtocol?
+    
     // MARK: - Main Initializer (Used by app)
     init(patientCase: PatientCase, session: StudentSession, modelContext: ModelContext, userRole: String) {
         self.patientCase = patientCase
@@ -39,22 +45,63 @@ class EvaluationViewModel: ObservableObject, Hashable {
         self.modelContext = modelContext
         self.userRole = userRole
         
+        // ✅ INITIALIZE: Progress service with model container
+        self.progressService = UserProgressService(modelContainer: modelContext.container)
+        
         // ✅ UPDATE TO DECODE THE NEW STRUCT
         if let evalJSON = session.evaluationJSON, let data = evalJSON.data(using: .utf8),
            let savedResult = try? JSONDecoder().decode(ProfessionalEvaluationResult.self, from: data) {
-            self.state = .success(savedResult)
+            state = .success(savedResult)
         } else {
-            self.state = .idle
+            state = .idle
+        }
+        
+        // ✅ NOTIFY: Listen for session updates from cloud
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .sessionUpdatedFromCloud,
+            object: session.sessionId,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadState()
         }
     }
     
+    deinit {
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    // ✅ RELOAD: Update state from session after cloud update
+    private func reloadState() {
+        if let evalJSON = session.evaluationJSON, let data = evalJSON.data(using: .utf8),
+           let savedResult = try? JSONDecoder().decode(ProfessionalEvaluationResult.self, from: data) {
+            state = .success(savedResult)
+        } else {
+            state = .idle
+        }
+    }
+
     // MARK: - Preview / Testing Initializer
     init(patientCase: PatientCase, session: StudentSession, modelContext: ModelContext, initialState: EvaluationState, userRole: String) {
         self.patientCase = patientCase
         self.session = session
         self.modelContext = modelContext
         self.userRole = userRole
+        
+        // ✅ INITIALIZE: Progress service (even in preview mode)
+        self.progressService = UserProgressService(modelContainer: modelContext.container)
+        
         self.state = initialState
+        
+        // ✅ NOTIFY: Listen for session updates from cloud (even in preview)
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .sessionUpdatedFromCloud,
+            object: session.sessionId,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadState()
+        }
     }
     
     // MARK: - Main Evaluation Function
@@ -90,7 +137,15 @@ class EvaluationViewModel: ObservableObject, Hashable {
             }
             session.evaluationStatus = EvaluationStatus.completed.rawValue
             session.evaluationErrorMessage = nil
+            session.isCompleted = true  // ✅ Mark session as completed
             try? modelContext.save()
+            
+            // ✅ SYNC TO CLOUD: Upload completed session with evaluation
+            let sessionToSync = self.session
+            Task.detached(priority: .userInitiated) {
+                await self.progressService.uploadSession(sessionToSync)
+                print("✅ Evaluation synced to cloud: Score \(result.overallScore)")
+            }
             
             state = .success(result)
         } catch {

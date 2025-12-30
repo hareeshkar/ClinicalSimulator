@@ -14,6 +14,12 @@ class DiagnosticsViewModel: ObservableObject {
     private let allStates: [String: StateDetail]
     private let simulationViewModel: SimulationViewModel
     
+    // ✅ ADD: Progress sync service for cloud synchronization
+    private let progressService: UserProgressService
+    
+    // ✅ NOTIFICATION: Observer for cloud updates
+    private var notificationObserver: NSObjectProtocol?
+    
     // ✅ THE FIX: The logic is now updated to check the array.
     var canOrderTests: Bool {
         // The rule is: ordering is allowed if the differential array is not empty
@@ -26,6 +32,9 @@ class DiagnosticsViewModel: ObservableObject {
         self.session = session
         self.modelContext = modelContext
         
+        // ✅ INITIALIZE: Progress service with model container
+        self.progressService = UserProgressService(modelContainer: modelContext.container)
+        
         let data = Data(simulationViewModel.patientCase.fullCaseJSON.utf8)
         if let detail = try? JSONDecoder().decode(EnhancedCaseDetail.self, from: data) {
             self.groupedAvailableItems = Dictionary(grouping: detail.dataSources.orderableItems, by: { $0.category })
@@ -34,6 +43,21 @@ class DiagnosticsViewModel: ObservableObject {
             self.allStates = [:]
         }
         updateOrderedTests()
+        
+        // ✅ NOTIFY: Listen for session updates from cloud
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .sessionUpdatedFromCloud,
+            object: session.sessionId,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateOrderedTests()
+        }
+    }
+    
+    deinit {
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
     }
     
     func orderTest(named testName: String, reason: String?) {
@@ -65,6 +89,12 @@ class DiagnosticsViewModel: ObservableObject {
         session.performedActions.append(newAction)
         try? modelContext.save()
         updateOrderedTests()
+        
+        // ✅ SYNC TO CLOUD: Upload session after ordering test
+        let sessionToSync = self.session
+        Task.detached(priority: .utility) {
+            await self.progressService.uploadSession(sessionToSync)
+        }
     }
     
     private func updateOrderedTests() {

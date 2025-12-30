@@ -13,6 +13,12 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
     private let geminiService = GeminiService()
     let modelContext: ModelContext // Made this public for SimulationView
     let userRole: String
+    
+    // ✅ ADD: Progress sync service for cloud synchronization
+    private let progressService: UserProgressService
+    
+    // ✅ NOTIFICATION: Observer for cloud updates
+    private var notificationObserver: NSObjectProtocol?
 
     let id = UUID() // Unique identifier for Identifiable conformance
 
@@ -21,9 +27,32 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
         self.session = session
         self.modelContext = modelContext
         self.userRole = userRole
+        
+        // ✅ INITIALIZE: Progress service with model container
+        self.progressService = UserProgressService(modelContainer: modelContext.container)
+        
         // Load existing messages from the session and sort by timestamp
         self.messages = session.messages.sorted(by: { $0.timestamp < $1.timestamp })
    
+        // ✅ NOTIFY: Listen for session updates from cloud
+        notificationObserver = NotificationCenter.default.addObserver(
+            forName: .sessionUpdatedFromCloud,
+            object: session.sessionId,
+            queue: .main
+        ) { [weak self] _ in
+            self?.reloadMessages()
+        }
+    }
+    
+    deinit {
+        if let observer = notificationObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+    }
+    
+    // ✅ RELOAD: Update messages from session after cloud update
+    private func reloadMessages() {
+        self.messages = session.messages.sorted(by: { $0.timestamp < $1.timestamp })
     }
 
     // --- HASHABLE CONFORMANCE ---
@@ -251,11 +280,19 @@ class ChatViewModel: ObservableObject, Hashable, Identifiable { // Conform to Id
         )
     }
     
-    // Public helper for robust persistence
+    // Public helper for robust persistence with cloud sync
     func saveSession() {
         do {
+            // 1. Save to local SwiftData (instant, main thread)
             try modelContext.save()
-            print("✅ [ChatViewModel] Session saved successfully.")
+            print("✅ [ChatViewModel] Local save successful.")
+            
+            // 2. Sync to cloud (background, fire-and-forget)
+            // Capture session reference for background task
+            let sessionToSync = self.session
+            Task.detached(priority: .utility) {
+                await self.progressService.uploadSession(sessionToSync)
+            }
         } catch {
             print("❌ [ChatViewModel] Failed to save session: \(error.localizedDescription)")
         }

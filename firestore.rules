@@ -25,6 +25,29 @@ service cloud.firestore {
       allow update: if request.auth != null 
                     && request.auth.uid == userId
                     && request.resource.data.email == resource.data.email;
+      
+      // ============================================
+      // 💾 USER SESSIONS SUBCOLLECTION (NEW)
+      // ============================================
+      // Each user's simulation session progress
+      // Uses "Save Game" architecture with blob storage
+      match /sessions/{sessionId} {
+        // Users can only access their own sessions
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+        
+        // Validation: Ensure required fields exist
+        allow create: if request.auth != null 
+                      && request.auth.uid == userId
+                      && request.resource.data.keys().hasAll(['sessionId', 'caseId', 'historyBlob']);
+        
+        // Update validation: Preserve session ownership
+        allow update: if request.auth != null 
+                      && request.auth.uid == userId
+                      && request.resource.data.sessionId == resource.data.sessionId;
+        
+        // Delete: Users can delete their own sessions
+        allow delete: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     // ============================================

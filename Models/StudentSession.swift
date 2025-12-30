@@ -2,6 +2,7 @@
 
 import Foundation
 import SwiftData
+import UIKit
 
 // ✅ NEW: Enum to track evaluation lifecycle states
 enum EvaluationStatus: String, CaseIterable {
@@ -78,6 +79,11 @@ class StudentSession {
     var messages: [ConversationMessage] = []
 
     var evaluationJSON: String?
+    
+    // ✅ SYNC METADATA: Track when this session was last synced
+    var lastSyncedToCloud: Date?
+    var cloudLastUpdated: Date?
+    var deviceIdentifier: String? // Track which device made last change
 
     // ✅ UPDATE THE INITIALIZER
     init(sessionId: UUID = UUID(), caseId: String, isCompleted: Bool = false, user: User) {
@@ -85,5 +91,6 @@ class StudentSession {
         self.caseId = caseId
         self.isCompleted = isCompleted
         self.user = user // Assign the user
+        self.deviceIdentifier = UIDevice.current.identifierForVendor?.uuidString
     }
 }

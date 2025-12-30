@@ -46,6 +46,10 @@ struct DashboardView: View {
     // UI State for loading
     @State private var isSyncing = false
     
+    // ✅ NEW: Auto-refresh timer for real-time sync
+    @State private var refreshTimer: Timer?
+    private let autoRefreshInterval: TimeInterval = 30 // Check every 30 seconds
+    
     // Track if we have done the initial load
     @AppStorage("isDatabaseInitialized") private var isDatabaseInitialized = false
     
@@ -195,7 +199,9 @@ struct DashboardView: View {
                     )
                     .navigationBarHidden(true)
                     .refreshable {
-                        try? await Task.sleep(nanoseconds: 500_000_000)
+                        // ✅ ENHANCED: Pull to refresh now checks for cloud updates
+                        dashLogger.log("🔄 User triggered refresh - checking for cloud updates...")
+                        await refreshFromCloud()
                     }
                 }
             }
@@ -205,6 +211,7 @@ struct DashboardView: View {
             }
         }
         .onAppear(perform: handleOnAppear)
+        .onDisappear(perform: stopAutoRefreshTimer) // ✅ NEW: Clean up timer
         .fullScreenCover(item: $presentingSimulation) { viewModel in
             NavigationStack { SimulationView(chatViewModel: viewModel) }
         }
@@ -521,6 +528,30 @@ struct DashboardView: View {
             // ✅ NEW: Rotate recommended cases on each appearance (respecting "Recommended"/"All"/specialty)
             currentRecommendedCases = Array(recommendedCasesForMyLevel.shuffled().prefix(3))
         }
+        
+        // ✅ NEW: Start auto-refresh timer when dashboard appears
+        startAutoRefreshTimer()
+    }
+    
+    // ✅ NEW: Start periodic cloud sync checks
+    private func startAutoRefreshTimer() {
+        // Cancel existing timer if any
+        refreshTimer?.invalidate()
+        
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: autoRefreshInterval, repeats: true) { _ in
+            Task {
+                await refreshFromCloud(silent: true)
+            }
+        }
+        
+        dashLogger.log("⏰ Auto-refresh timer started (interval: \(autoRefreshInterval)s)")
+    }
+    
+    // ✅ NEW: Stop timer when view disappears
+    private func stopAutoRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = nil
+        dashLogger.log("⏸️ Auto-refresh timer stopped")
     }
     
     private func performBackgroundSync() async {
@@ -539,19 +570,27 @@ struct DashboardView: View {
             return
         }
         
-        dashLogger.log("🚀 Starting cloud sync from DashboardView")
+        dashLogger.log("🚀 Starting comprehensive cloud sync from DashboardView")
         isSyncing = true
         
-        // Create the actor - access container through modelContext
-        let syncer = CaseSynchronizationService(modelContainer: modelContext.container)
+        // Create sync services - access container through modelContext
+        let container = modelContext.container
+        let caseSyncer = CaseSynchronizationService(modelContainer: container)
+        let progressSyncer = UserProgressService(modelContainer: container) // ✅ NEW
         
         do {
-            // ☁️ NEW: This syncs from Firestore instead of local JSON
-            dashLogger.log("☁️ Calling syncWithCloud() on background actor...")
-            try await syncer.syncWithCloud()
+            // ☁️ Step 1: Sync case library (master database)
+            dashLogger.log("☁️ [1/2] Syncing case library from Firestore...")
+            try await caseSyncer.syncWithCloud()
+            dashLogger.log("✅ Case library sync complete")
+            
+            // ☁️ Step 2: Restore user's session progress (save games) ✅ NEW
+            dashLogger.log("☁️ [2/2] Restoring user progress from cloud...")
+            try await progressSyncer.restoreUserProgress()
+            dashLogger.log("✅ User progress sync complete")
             
             await MainActor.run {
-                dashLogger.log("✅ Cloud sync completed successfully")
+                dashLogger.log("✅ Full sync completed successfully")
                 isDatabaseInitialized = true
                 isSyncing = false
                 
@@ -567,7 +606,7 @@ struct DashboardView: View {
             
             // Fallback to local sync if cloud fails
             do {
-                try await syncer.syncLocalData()
+                try await caseSyncer.syncLocalData()
                 await MainActor.run {
                     dashLogger.log("✅ Local sync completed successfully (fallback)")
                     isDatabaseInitialized = true
@@ -584,6 +623,33 @@ struct DashboardView: View {
                     isSyncing = false
                     isDatabaseInitialized = true // Mark as initialized to prevent infinite retry
                 }
+            }
+        }
+    }
+    
+    // ✅ ENHANCED: Refresh from cloud on pull-to-refresh or auto-timer
+    /// Checks for updates from other devices and refreshes UI
+    /// - Parameter silent: If true, skips logging (for auto-refresh)
+    private func refreshFromCloud(silent: Bool = false) async {
+        if !silent {
+            dashLogger.log("🔄 User-triggered refresh - checking cloud for updates...")
+        }
+        
+        let container = modelContext.container
+        let progressSyncer = UserProgressService(modelContainer: container)
+        
+        do {
+            // Force refresh to get latest from cloud (with smart timestamp checking)
+            try await progressSyncer.restoreUserProgress()
+            
+            if !silent {
+                await MainActor.run {
+                    dashLogger.log("✅ Cloud refresh complete - UI updated automatically")
+                }
+            }
+        } catch {
+            if !silent {
+                dashLogger.error("❌ Cloud refresh failed: \(error.localizedDescription, privacy: .public)")
             }
         }
     }
